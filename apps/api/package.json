@@ -11,7 +11,9 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "validate:prisma": "npx prisma validate",
-    "generate:prisma": "npx prisma generate"
+    "generate:prisma": "npx prisma generate",
+    "migrate:prisma": "npx prisma migrate dev",
+    "migrate:deploy:prisma": "npx prisma migrate deploy"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
