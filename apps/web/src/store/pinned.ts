@@ -20,6 +20,7 @@ interface PinnedState {
   pinnedWikiIds: string[];
   togglePinWiki: (wikiId: string) => void;
   isWikiPinned: (wikiId: string) => boolean;
+  pruneMissingWikis: (existingIds: string[]) => void;
 }
 
 /** 已置顶（Pin）的 Wiki id 列表，持久化到 localStorage，供 Sidebar 展示置顶列表 */
@@ -35,5 +36,19 @@ export const usePinnedStore = create<PinnedState>((set, get) => ({
     set({pinnedWikiIds: next});
   },
 
-  isWikiPinned: wikiId => get().pinnedWikiIds.includes(wikiId)
+  isWikiPinned: wikiId => get().pinnedWikiIds.includes(wikiId),
+
+  /**
+   * 把不在 existingIds 里的置顶记录全部清掉——工作区可能因为被删除、或当前用户被移出成员
+   * 而从可见列表里消失，这两种情况都会导致 Sidebar 原本用"找不到就显示原始 id"兜底的展示
+   * 方式变成永久残留的裸 UUID。统一在 `useWikiStore.fetchWikis()` 成功后调用一次，
+   * 不需要在每个"让 Wiki 消失"的操作里各自打补丁（见 wiki-workspace-fixes design.md 决策 1）。
+   */
+  pruneMissingWikis: existingIds => {
+    const current = get().pinnedWikiIds;
+    const next = current.filter(id => existingIds.includes(id));
+    if (next.length === current.length) return;
+    persist(next);
+    set({pinnedWikiIds: next});
+  }
 }));

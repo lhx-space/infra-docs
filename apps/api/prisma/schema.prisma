@@ -13,14 +13,22 @@ datasource db {
 }
 
 // 用户账号表：只放登录/鉴权相关的核心字段
+// 主键统一用 UUID v7（@db.Uuid 存成 Postgres 原生 uuid 类型，16 字节二进制，非文本）：
+// v7 的时间前缀对写入索引友好，随机后缀避免 ID 可被枚举/猜测，也为以后分库分表预留了
+// "不需要中心协调即可全局唯一生成"的能力（见 openspec 讨论，此处不重复展开）
 model User {
-  id       Int        @id @default(autoincrement())
+  id       String     @id @default(uuid(7)) @db.Uuid
   email    String     @unique
   username String     @unique
   password String
   status   UserStatus @default(ACTIVE)
 
   profile UserProfile?
+
+  // 反向关系：Prisma 要求关系的两端都声明字段；这两个字段本身不会被业务代码直接使用，
+  // 实际查询走 models/wiki.ts / models/wiki-member.ts 里对 Wiki/WikiMember 的显式查询
+  ownedWikis      Wiki[]
+  wikiMemberships WikiMember[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -36,9 +44,9 @@ enum UserStatus {
 
 // 用户详情表：与 User 一对一，存放非鉴权、可选、后续可能扩展的资料字段
 model UserProfile {
-  id     Int  @id @default(autoincrement())
-  userId Int  @unique
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid(7)) @db.Uuid
+  userId String @unique @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   nickname  String?
   avatarUrl String?
@@ -57,4 +65,44 @@ enum Gender {
   MALE
   FEMALE
   UNKNOWN
+}
+
+// 工作区：ownerId 只记录创建者展示用，真正的权限判断统一走 WikiMember 表
+model Wiki {
+  id          String  @id @default(uuid(7)) @db.Uuid
+  name        String
+  description String?
+  // 未上传时由 services/wiki.ts 用 DiceBear 按名称生成默认封面兜底，不占用 MinIO 存储（见 design.md 决策 5）
+  coverImage  String?
+  ownerId     String  @db.Uuid
+  owner       User    @relation(fields: [ownerId], references: [id])
+
+  members WikiMember[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("wikis")
+}
+
+enum WikiRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+// 工作区成员关系表：一个用户在一个工作区里只有一条角色记录
+model WikiMember {
+  id     String   @id @default(uuid(7)) @db.Uuid
+  wikiId String   @db.Uuid
+  userId String   @db.Uuid
+  role   WikiRole
+
+  wiki Wiki @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([wikiId, userId])
+  @@map("wiki_members")
 }

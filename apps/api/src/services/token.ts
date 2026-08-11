@@ -73,7 +73,7 @@ function mapVerificationError(err: unknown): TokenVerificationError {
   return new TokenVerificationError('invalid', message);
 }
 
-export async function signAccessToken(userId: number | string): Promise<string> {
+export async function signAccessToken(userId: string): Promise<string> {
   return new SignJWT({})
     .setProtectedHeader({alg: ALG})
     .setSubject(String(userId))
@@ -92,7 +92,7 @@ export async function verifyAccessToken(token: string): Promise<AccessTokenPaylo
   }
 }
 
-export async function signRefreshToken(userId: number | string): Promise<SignedRefreshToken> {
+export async function signRefreshToken(userId: string): Promise<SignedRefreshToken> {
   const jti = randomUUID();
   const token = await new SignJWT({})
     .setProtectedHeader({alg: ALG})

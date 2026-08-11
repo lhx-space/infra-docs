@@ -1,7 +1,8 @@
 import {http} from '@/network';
 
 export interface AuthUser {
-  id: number;
+  /** UUID v7 字符串（后端 apps/api 已从自增 Int 迁移到 UUID 主键） */
+  id: string;
   email: string;
   username: string;
   status: 'ACTIVE' | 'DISABLED' | 'PENDING';

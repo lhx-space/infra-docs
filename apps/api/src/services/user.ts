@@ -23,7 +23,7 @@ function toPublicProfile(profile: UserProfile | null): PublicProfile | null {
  * 查询当前用户 + 关联的 UserProfile，组装成 `/me` 的响应体。
  * 用户不存在（如 token 校验通过但账号已被删除）时返回 `null`，由 handler 统一按 401 处理。
  */
-export async function getMe(userId: number): Promise<MeResult | null> {
+export async function getMe(userId: string): Promise<MeResult | null> {
   const userWithProfile = await findUserWithProfile(userId);
   if (!userWithProfile) return null;
 

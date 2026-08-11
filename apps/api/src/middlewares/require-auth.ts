@@ -4,8 +4,8 @@ import {verifyAccessToken} from '../services/token';
 declare global {
   namespace Express {
     interface Request {
-      /** 由 requireAuth 中间件注入，仅在挂载了该中间件的路由上存在 */
-      user?: {id: number};
+      /** 由 requireAuth 中间件注入，仅在挂载了该中间件的路由上存在。id 是 UUID v7 字符串 */
+      user?: {id: string};
     }
   }
 }
@@ -37,7 +37,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
   try {
     const {sub} = await verifyAccessToken(token);
-    req.user = {id: Number(sub)};
+    req.user = {id: sub};
     next();
   } catch {
     res.status(401).json({error: 'unauthorized'});

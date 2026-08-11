@@ -1,11 +1,7 @@
 import {allowRefreshToken, isRefreshTokenAllowed, revokeRefreshToken} from '../cache/index';
-import {
-  createUser,
-  findUserByEmail,
-  findUserById,
-  findUserByUsername,
-  type User
-} from '../models/user';
+import {prisma} from '../db/prisma';
+import {findUserByEmail, findUserById, findUserByUsername, type User} from '../models/user';
+import {buildDicebearUrl} from '../utils/dicebear';
 import {hashPassword, verifyPassword} from './password';
 import {
   getRefreshTokenTtlSeconds,
@@ -49,14 +45,27 @@ export function toPublicUser(user: User): PublicUser {
   return publicUser;
 }
 
-async function issueTokens(userId: number): Promise<AuthTokens> {
+/**
+ * 默认头像：DiceBear 按 username 做种子生成的确定性头像，注册时直接算好写入 `UserProfile.avatarUrl`，
+ * 不再交给前端每次现算——项目是 web + desktop 双端共享同一个后端，头像规则只在这一处实现，
+ * 任何客户端只需要读 `profile.avatarUrl` 就能拿到可用的头像，不用各自重复"没头像时怎么生成"这条规则。
+ *
+ * 权衡：种子在注册这一刻就固定写入了，如果以后支持修改用户名，这个已存的 URL 不会跟着自动变
+ * （目前没有改用户名功能，这个代价是 0；如果以后加了，需要在改名逻辑里同步重新生成一次头像）。
+ */
+function buildDefaultAvatarUrl(username: string): string {
+  return buildDicebearUrl('glass', username);
+}
+
+async function issueTokens(userId: string): Promise<AuthTokens> {
   const accessToken = await signAccessToken(userId);
   const {token: refreshToken, jti} = await signRefreshToken(userId);
   const refreshTokenTtlSeconds = getRefreshTokenTtlSeconds();
-  await allowRefreshToken(String(userId), jti, refreshTokenTtlSeconds);
+  await allowRefreshToken(userId, jti, refreshTokenTtlSeconds);
   return {accessToken, refreshToken, refreshTokenTtlSeconds};
 }
 
+/** 注册：用事务原子性地同时创建 User + 带默认头像的 UserProfile（同 wiki.createWiki 的写法风格） */
 export async function register(input: RegisterInput): Promise<PublicUser> {
   const [existingByEmail, existingByUsername] = await Promise.all([
     findUserByEmail(input.email),
@@ -67,10 +76,14 @@ export async function register(input: RegisterInput): Promise<PublicUser> {
   }
 
   const passwordHash = await hashPassword(input.password);
-  const user = await createUser({
-    email: input.email,
-    username: input.username,
-    password: passwordHash
+  const user = await prisma.$transaction(async tx => {
+    const created = await tx.user.create({
+      data: {email: input.email, username: input.username, password: passwordHash}
+    });
+    await tx.userProfile.create({
+      data: {userId: created.id, avatarUrl: buildDefaultAvatarUrl(input.username)}
+    });
+    return created;
   });
   return toPublicUser(user);
 }
@@ -116,8 +129,7 @@ export async function refresh(refreshToken: string): Promise<LoginResult> {
   // Rotation：先吊销旧 token，再签发新的一对
   await revokeRefreshToken(sub, jti);
 
-  const userId = Number(sub);
-  const user = await findUserById(userId);
+  const user = await findUserById(sub);
   if (!user) {
     throw new AuthError(401, 'invalid_refresh_token');
   }

@@ -11,7 +11,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
-import {getAvatarFallbackText, getAvatarUrl} from '@/lib/avatar';
+import {getAvatarFallbackText} from '@/lib/avatar';
 import {useAuthStore} from '@/store/auth';
 import {useProfileStore} from '@/store/profile';
 import {type ThemePreference, useThemeStore} from '@/store/theme';
@@ -22,6 +22,11 @@ const THEME_OPTIONS: Array<{value: ThemePreference; label: string; icon: typeof 
   {value: 'system', label: '跟随系统', icon: Monitor}
 ];
 
+/**
+ * `avatarUrl` 由后端在注册时就写好默认值（见 apps/api/src/services/auth.ts 的 buildDefaultAvatarUrl），
+ * 前端不再需要"没有头像时怎么生成"这条规则——只需要处理两种边界：
+ * profile 还没加载完成（`avatarUrl` 为空）、或图片加载失败（`onError`），两种情况都展示字母兜底。
+ */
 function UserAvatar({
   username,
   avatarUrl,
@@ -33,7 +38,7 @@ function UserAvatar({
 }) {
   const [errored, setErrored] = useState(false);
 
-  if (errored) {
+  if (!avatarUrl || errored) {
     return (
       <div
         className={`flex shrink-0 items-center justify-center rounded-full bg-primary font-medium text-primary-foreground ${className}`}
@@ -45,7 +50,7 @@ function UserAvatar({
 
   return (
     <img
-      src={getAvatarUrl({username}, avatarUrl)}
+      src={avatarUrl}
       alt={username}
       className={`shrink-0 rounded-full bg-muted object-cover ${className}`}
       onError={() => setErrored(true)}

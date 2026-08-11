@@ -1,23 +1,37 @@
 import {BookOpen, ChevronsLeft, Home as HomeIcon, Pin, Plus, Search} from 'lucide-react';
-import {useState} from 'react';
-import {Link, useLocation, useNavigate} from 'react-router-dom';
+import {useEffect, useState} from 'react';
+import {Link, useLocation} from 'react-router-dom';
 import {SearchDialog} from '@/components/search/SearchDialog';
 import {Button} from '@/components/ui/button';
+import {CreateWikiDialog} from '@/components/wiki/CreateWikiDialog';
 import {useResizable} from '@/hooks/use-resizable';
 import {cn} from '@/lib/utils';
 import {usePinnedStore} from '@/store/pinned';
 import {useShellStore} from '@/store/shell';
+import {useWikiStore} from '@/store/wiki';
 
 /** 登录后所有页面共享的侧边栏：品牌区、导航结构、宽度可拖拽 */
 export function Sidebar() {
   const location = useLocation();
-  const navigate = useNavigate();
   const sidebarWidth = useShellStore(state => state.sidebarWidth);
   const setSidebarWidth = useShellStore(state => state.setSidebarWidth);
   const toggleSidebar = useShellStore(state => state.toggleSidebar);
   const pinnedWikiIds = usePinnedStore(state => state.pinnedWikiIds);
+  const wikis = useWikiStore(state => state.wikis);
+  const fetchWikis = useWikiStore(state => state.fetchWikis);
 
   const [searchOpen, setSearchOpen] = useState(false);
+  // "+" 之前只是 navigate('/wiki') 跳到列表页，并没有真正创建 Wiki 的动作——
+  // 直接在 Sidebar 本地持有一份创建弹窗状态，跟 WikiList.tsx 里的用法一致，
+  // 点击即弹窗，不需要先跳转再在列表页里点一次"新建 Wiki"。
+  const [createWikiOpen, setCreateWikiOpen] = useState(false);
+
+  // Sidebar 和 WikiList 页面共享同一份列表数据，避免同样的 GET /wikis 被拉两次（见 design.md 决策 7）：
+  // 只有 store 里还没有数据时才触发一次拉取；`http.get` 传输层的 Singleflight 去重也覆盖了
+  // "两者恰好同时挂载"这种并发场景，这里不需要额外处理。
+  useEffect(() => {
+    if (wikis.length === 0) void fetchWikis();
+  }, [wikis.length, fetchWikis]);
   // 钳制到 200-480px 的业务边界在 setSidebarWidth（store/shell.ts）里做，
   // useResizable 本身只管"拖拽手势 → 实时宽度"这段跟侧边栏身份无关的通用交互逻辑
   const {handleResizeStart} = useResizable({width: sidebarWidth, onResize: setSidebarWidth});
@@ -71,7 +85,7 @@ export function Sidebar() {
             <Button
               variant="ghost"
               size="icon-xs"
-              onClick={() => navigate('/wiki')}
+              onClick={() => setCreateWikiOpen(true)}
               aria-label="新建 Wiki"
             >
               <Plus className="size-3.5" />
@@ -87,16 +101,20 @@ export function Sidebar() {
 
           {pinnedWikiIds.length > 0 ? (
             <div className="flex flex-col gap-1 pl-2">
-              {pinnedWikiIds.map(id => (
-                <Link
-                  key={id}
-                  to={`/wiki/${id}`}
-                  className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-sidebar-accent"
-                >
-                  <Pin className="size-3.5" />
-                  <span className="truncate">{id}</span>
-                </Link>
-              ))}
+              {pinnedWikiIds.map(id => {
+                // 找不到（列表还没加载完 / 该 Wiki 已被删除）时兜底显示原始 id，不阻塞渲染（见 design.md 决策 7）
+                const name = wikis.find(w => w.id === id)?.name ?? id;
+                return (
+                  <Link
+                    key={id}
+                    to={`/wiki/${id}`}
+                    className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-sidebar-accent"
+                  >
+                    <Pin className="size-3.5" />
+                    <span className="truncate">{name}</span>
+                  </Link>
+                );
+              })}
             </div>
           ) : null}
 
@@ -112,6 +130,7 @@ export function Sidebar() {
       </aside>
 
       <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
+      <CreateWikiDialog open={createWikiOpen} onOpenChange={setCreateWikiOpen} />
     </>
   );
 }

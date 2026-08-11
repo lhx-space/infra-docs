@@ -11,7 +11,14 @@ const EnvSchema = z.object({
   ACCESS_TOKEN_TTL: z.string().default('15m'),
   REFRESH_TOKEN_TTL: z.string().default('7d'),
   /** 前端页面 origin，用于 CORS 白名单 + 携带凭证（refresh cookie） */
-  CORS_ORIGIN: z.string().default('http://localhost:5173')
+  CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  /** MinIO 内部连接地址（SDK 读写用），与 MINIO_PUBLIC_URL 分开，见 design.md 决策 1 */
+  MINIO_ENDPOINT: z.string().default('localhost'),
+  MINIO_PORT: z.coerce.number().int().positive().default(9000),
+  MINIO_ROOT_USER: z.string().default('minioadmin'),
+  MINIO_ROOT_PASSWORD: z.string().default('minioadmin'),
+  /** 拼接公开可访问 URL 用的外部地址，生产环境换真云存储时只需要改这一个值 */
+  MINIO_PUBLIC_URL: z.string().default('http://localhost:9000')
 });
 
 export const env = EnvSchema.parse(process.env);

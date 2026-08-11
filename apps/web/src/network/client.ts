@@ -47,8 +47,11 @@ async function rawRequest<T>(path: string, options: RequestOptions = {}): Promis
   const accessToken = useAuthStore.getState().accessToken;
 
   const {signal} = options;
+  // FormData（文件上传）不手动设置 Content-Type：浏览器需要自己生成带 boundary 的 multipart 头，
+  // 手动设置反而会丢掉 boundary 导致后端 multer 解析失败。
+  const isFormData = body instanceof FormData;
   const headers: Record<string, string> = {};
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (body !== undefined && !isFormData) headers['Content-Type'] = 'application/json';
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
   const response = await fetchWithRetry(
@@ -58,7 +61,7 @@ async function rawRequest<T>(path: string, options: RequestOptions = {}): Promis
       headers,
       // 跨域携带 httpOnly 的 refresh_token cookie，需配合后端 cors({ credentials: true })
       credentials: 'include',
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
       signal
     },
     method
@@ -100,5 +103,12 @@ export const http = {
     path: string,
     body?: unknown,
     options?: Omit<RequestOptions, 'method' | 'body'>
-  ): Promise<T> => rawRequest<T>(path, {...options, method: 'POST', body})
+  ): Promise<T> => rawRequest<T>(path, {...options, method: 'POST', body}),
+  patch: <T>(
+    path: string,
+    body?: unknown,
+    options?: Omit<RequestOptions, 'method' | 'body'>
+  ): Promise<T> => rawRequest<T>(path, {...options, method: 'PATCH', body}),
+  delete: <T>(path: string, options?: Omit<RequestOptions, 'method' | 'body'>): Promise<T> =>
+    rawRequest<T>(path, {...options, method: 'DELETE'})
 };

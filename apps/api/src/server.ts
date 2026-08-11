@@ -1,8 +1,11 @@
 import {createApp} from './app';
 import {env} from './env';
 import {logger} from './logger';
+import {ensureStorageReady} from './services/storage';
 
 const app = createApp();
+
+void ensureStorageReady();
 
 const server = app.listen(env.PORT, () => {
   logger.info({port: env.PORT}, 'api listening');
