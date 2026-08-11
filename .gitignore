@@ -28,3 +28,4 @@ out/
 
 # docker volume data (postgres/redis persisted locally)
 /data/
+.data
