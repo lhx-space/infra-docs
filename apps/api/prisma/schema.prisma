@@ -1,0 +1,60 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// 用户账号表：只放登录/鉴权相关的核心字段
+model User {
+  id       Int        @id @default(autoincrement())
+  email    String     @unique
+  username String     @unique
+  password String
+  status   UserStatus @default(ACTIVE)
+
+  profile UserProfile?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+  PENDING
+}
+
+// 用户详情表：与 User 一对一，存放非鉴权、可选、后续可能扩展的资料字段
+model UserProfile {
+  id     Int  @id @default(autoincrement())
+  userId Int  @unique
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  nickname  String?
+  avatarUrl String?
+  bio       String?
+  gender    Gender    @default(UNKNOWN)
+  birthday  DateTime?
+  phone     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_profiles")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  UNKNOWN
+}

@@ -1,0 +1,39 @@
+services:
+  api:
+    build: ./apps/api
+    ports:
+      - '3000:3000'
+    env_file:
+      - ./apps/api/.env
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    profiles: ["full"]
+
+  postgres:
+    container_name: yjs-docs-postgres
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-yjs-docs}
+    ports:
+      - '5432:5432'
+    volumes:
+      - ./.data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-user}']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    container_name: yjs-docs-redis
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - ./data/redis:/data
+    restart: unless-stopped
