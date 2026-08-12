@@ -1,0 +1,9 @@
+node_modules
+dist
+dist-offline
+out
+coverage
+playwright-report
+test-results
+.data
+apps/desktop/out

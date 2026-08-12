@@ -18,10 +18,10 @@ code {
   font-family:
     ui-monospace,
     SFMono-Regular,
-    SF Mono,
+    "SF Mono",
     Menlo,
     Consolas,
-    Liberation Mono,
+    "Liberation Mono",
     monospace;
   font-size: 85%;
 }
@@ -73,17 +73,15 @@ code {
 }
 
 .react {
-  background: -webkit-linear-gradient(315deg, #087ea4 55%, #7c93ee);
+  background: linear-gradient(315deg, #087ea4 55%, #7c93ee);
   background-clip: text;
-  -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   font-weight: 700;
 }
 
 .ts {
-  background: -webkit-linear-gradient(315deg, #3178c6 45%, #f0dc4e);
+  background: linear-gradient(315deg, #3178c6 45%, #f0dc4e);
   background-clip: text;
-  -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   font-weight: 700;
 }
@@ -129,7 +127,7 @@ code {
   bottom: 30px;
   margin: 0 auto;
   padding: 15px 0;
-  font-family: "Menlo", "Lucida Console", monospace;
+  font-family: Menlo, "Lucida Console", monospace;
   display: inline-flex;
   overflow: hidden;
   align-items: center;
@@ -146,24 +144,25 @@ code {
   font-size: 14px;
   line-height: 14px;
   opacity: 0.8;
+
   &:last-child {
     border: none;
   }
 }
 
-@media (max-width: 720px) {
+@media (width <= 720px) {
   .text {
     font-size: 20px;
   }
 }
 
-@media (max-width: 620px) {
+@media (width <= 620px) {
   .versions {
     display: none;
   }
 }
 
-@media (max-width: 350px) {
+@media (width <= 350px) {
   .tip,
   .actions {
     display: none;

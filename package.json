@@ -13,9 +13,12 @@
     "build": "pnpm -r --filter='./apps/*' --filter='./packages/*' build",
     "dev": "pnpm -r --parallel --filter='./apps/*' --filter='./packages/*' dev",
     "typecheck": "pnpm -r --filter='./apps/*' --filter='./packages/*' typecheck",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
-    "format": "biome format --write .",
+    "lint": "biome check . && stylelint \"**/*.{css,less,scss}\"",
+    "lint:fix": "biome check --write . && stylelint \"**/*.{css,less,scss}\" --fix",
+    "lint:css": "stylelint \"**/*.{css,less,scss}\"",
+    "lint:css:fix": "stylelint \"**/*.{css,less,scss}\" --fix",
+    "format": "biome format --write . && stylelint \"**/*.{css,less,scss}\" --fix",
+    "format:css": "stylelint \"**/*.{css,less,scss}\" --fix",
     "prepare": "husky"
   },
   "devDependencies": {
@@ -24,6 +27,12 @@
     "@commitlint/config-conventional": "^19.6.0",
     "husky": "^9.1.7",
     "lint-staged": "^15.2.10",
+    "postcss-less": "^6.0.0",
+    "postcss-scss": "^4.0.9",
+    "stylelint": "^17.14.1",
+    "stylelint-config-standard": "^40.0.0",
+    "stylelint-config-standard-less": "^4.1.0",
+    "stylelint-config-standard-scss": "^17.0.0",
     "typescript": "^5.4.0"
   }
 }

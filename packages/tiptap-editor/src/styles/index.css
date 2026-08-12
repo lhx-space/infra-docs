@@ -15,13 +15,14 @@
 :root {
   --doc-editor-fg: var(--foreground, #1f2328);
   --doc-editor-fg-muted: var(--muted-foreground, #6b7280);
-  --doc-editor-bg: var(--background, #ffffff);
+  --doc-editor-bg: var(--background, #fff);
   --doc-editor-border: var(--border, #e5e7eb);
   --doc-editor-accent: var(--primary, #2563eb);
-  --doc-editor-accent-fg: var(--primary-foreground, #ffffff);
+  --doc-editor-accent-fg: var(--primary-foreground, #fff);
   --doc-editor-surface: var(--muted, #f9fafb);
   --doc-editor-code-bg: var(--muted, #f6f8fa);
   --doc-editor-danger: var(--destructive, #dc2626);
+
   /* 这个值是你实测确认过的（浏览器里选中 `.ProseMirror` 量出来正好符合预期），不要再改回
      820/868 之类"理论上算出来"的数字——上一轮我按 `border-box` 心算出 868 才是理论正确值，
      但实测你要的效果对应的是 1070，说明实际生效的盒模型/层级跟我理论推的不完全一致，
@@ -29,6 +30,7 @@
   --doc-editor-max-width: 1070px;
   --doc-editor-outline-width: 250px;
   --doc-editor-radius: 6px;
+
   /* TOC 和正文共用同一个字号变量：不需要区分"目录字体更小"，跟飞书一致 */
   --doc-editor-font-size: 18px;
 }
@@ -116,6 +118,7 @@
   display: flex;
   flex: 1;
   overflow: hidden;
+
   /* 大纲的响应式隐藏（下面 `.doc-editor-outline` 的 `@container` 规则）要跟着这个容器
      自身的实际宽度走，不是跟着整个浏览器视口宽度走——不然 Sidebar 拖拽变宽/变窄时，
      `.doc-editor__body` 的实际可用宽度已经变了，但视口宽度（`@media`）完全不知道，
@@ -194,6 +197,7 @@
   gap: 4px;
   pointer-events: none;
 }
+
 .doc-editor-outline > * {
   pointer-events: auto;
 }
@@ -212,6 +216,7 @@
   cursor: pointer;
   font-size: 13px;
 }
+
 .doc-editor-outline__toggle:hover {
   color: var(--doc-editor-fg);
 }
@@ -231,7 +236,7 @@
    本该隐藏的时候还显示着，跟正文撞在一起）：容器宽度 W 时，正文（居中）左边距是
    `(W - 1070) / 2`；大纲固定占了 `[12, 12+250=262]` 这一段。要保证正文左边距比大纲
    占位还多留 24px 的呼吸空间，即 `(W-1070)/2 - 262 ≥ 24` ⇒ `W ≥ 1642`；比这更窄就直接
-   隐藏大纲，不做挤压/缩小。*/
+   隐藏大纲，不做挤压/缩小。 */
 @container doc-editor-body (max-width: 1641px) {
   .doc-editor-outline {
     display: none;
@@ -257,6 +262,7 @@
   cursor: pointer;
   font-size: 10px;
 }
+
 .doc-editor-outline__caret--placeholder {
   cursor: default;
 }
@@ -293,56 +299,68 @@
   font-weight: 700;
   margin: 1.4em 0 0.6em;
 }
+
 .ProseMirror h2 {
   font-size: 1.5em;
   font-weight: 700;
   margin: 1.3em 0 0.5em;
 }
+
 .ProseMirror h3 {
   font-size: 1.25em;
   font-weight: 600;
   margin: 1.2em 0 0.5em;
 }
+
 .ProseMirror p {
   margin: 0.5em 0;
 }
+
 .ProseMirror blockquote {
   border-left: 3px solid var(--doc-editor-border);
   padding-left: 12px;
   color: var(--doc-editor-fg-muted);
   margin: 0.8em 0;
 }
+
 .ProseMirror hr {
   border: none;
   border-top: 1px solid var(--doc-editor-border);
   margin: 1.5em 0;
 }
+
 .ProseMirror ul,
 .ProseMirror ol {
   padding-left: 1.4em;
 }
+
 /* 消费方（`apps/web`）的全局 reset 会把 `list-style: none` 挂在 `html`/`body` 上，
    而 `list-style` 是可继承属性，会一路继承进来吃掉圆点/序号——这里显式声明一次，
    不依赖任何外部环境的默认样式（跟这份 CSS「不依赖特定构建工具/宿主样式」的原则一致）。 */
 .ProseMirror ul {
   list-style-type: disc;
 }
+
 .ProseMirror ol {
   list-style-type: decimal;
 }
+
 .ProseMirror li {
   margin: 0.2em 0;
 }
+
 .ProseMirror a {
   color: var(--doc-editor-accent);
   text-decoration: underline;
 }
+
 .ProseMirror code {
   background: var(--doc-editor-code-bg);
   border-radius: 4px;
   padding: 0.1em 0.3em;
   font-size: 0.9em;
 }
+
 .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   color: var(--doc-editor-fg-muted);
@@ -368,11 +386,13 @@
   list-style: none;
   padding-left: 0.2em;
 }
+
 .ProseMirror ul[data-type="taskList"] li {
   display: flex;
   align-items: flex-start;
   gap: 6px;
 }
+
 .ProseMirror ul[data-type="taskList"] li > label {
   display: flex;
   flex-shrink: 0;
@@ -380,6 +400,7 @@
   height: calc(1em * 1.75);
   margin: 0;
 }
+
 .ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"] {
   width: 16px;
   height: 16px;
@@ -387,6 +408,7 @@
   cursor: pointer;
   accent-color: var(--doc-editor-accent);
 }
+
 .ProseMirror ul[data-type="taskList"] li > div > p {
   margin: 0;
 }
@@ -417,9 +439,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgb(0 0 0 / 80%);
   cursor: zoom-out;
 }
+
 .doc-editor-image-preview img {
   max-width: 90vw;
   max-height: 90vh;
@@ -427,6 +450,7 @@
   border-radius: 4px;
   cursor: default;
 }
+
 .doc-editor-image-preview .doc-editor-mermaid-preview {
   background: var(--doc-editor-bg);
   border-radius: var(--doc-editor-radius);
@@ -436,6 +460,7 @@
   max-height: 90vh;
   overflow: auto;
 }
+
 .doc-editor-image-preview .doc-editor-mermaid-preview svg {
   max-width: 100%;
   height: auto;
@@ -462,6 +487,7 @@
   color: var(--doc-editor-fg-muted);
   font-size: 13px;
 }
+
 .doc-editor-image-uploading::before {
   content: "";
   width: 12px;
@@ -471,6 +497,7 @@
   border-top-color: var(--doc-editor-accent);
   animation: doc-editor-spin 0.8s linear infinite;
 }
+
 @keyframes doc-editor-spin {
   to {
     transform: rotate(360deg);
@@ -484,6 +511,7 @@
   border-radius: var(--doc-editor-radius);
   overflow: hidden;
 }
+
 .doc-editor-code-block__header {
   display: flex;
   align-items: center;
@@ -494,6 +522,7 @@
   font-size: 12px;
   color: var(--doc-editor-fg-muted);
 }
+
 .doc-editor-code-block__collapse,
 .doc-editor-code-block__copy {
   border: none;
@@ -502,11 +531,13 @@
   cursor: pointer;
   font-size: 12px;
 }
+
 .doc-editor-code-block__language {
   flex: 1;
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
+
 .doc-editor-code-block__content {
   margin: 0;
   padding: 12px;
@@ -522,19 +553,23 @@
 .hljs-literal {
   color: #cf222e;
 }
+
 .hljs-string,
 .hljs-attr {
   color: #0a3069;
 }
+
 .hljs-comment {
   color: #6e7781;
   font-style: italic;
 }
+
 .hljs-title,
 .hljs-name,
 .hljs-function {
   color: #8250df;
 }
+
 .hljs-number {
   color: #0550ae;
 }
@@ -545,18 +580,22 @@
 .dark .hljs-literal {
   color: #ff7b72;
 }
+
 .dark .hljs-string,
 .dark .hljs-attr {
   color: #a5d6ff;
 }
+
 .dark .hljs-comment {
   color: #8b949e;
 }
+
 .dark .hljs-title,
 .dark .hljs-name,
 .dark .hljs-function {
   color: #d2a8ff;
 }
+
 .dark .hljs-number {
   color: #79c0ff;
 }
@@ -568,11 +607,13 @@
   border-radius: var(--doc-editor-radius);
   padding: 12px;
 }
+
 .doc-editor-mermaid--display {
   position: relative;
   cursor: pointer;
   text-align: center;
 }
+
 .doc-editor-mermaid__edit-btn {
   position: absolute;
   top: 6px;
@@ -588,13 +629,16 @@
   cursor: pointer;
   transition: opacity 0.15s ease;
 }
+
 .doc-editor-mermaid--display:hover .doc-editor-mermaid__edit-btn {
   opacity: 1;
 }
+
 .doc-editor-mermaid__edit-btn:hover {
   background: var(--doc-editor-surface);
   color: var(--doc-editor-fg);
 }
+
 /* biome-ignore lint/style/noDescendingSpecificity: 跟前面「图片/图表双击预览」遮罩里的
    `.doc-editor-image-preview .doc-editor-mermaid-preview svg`（特异度更高）作用在完全不同的
    DOM 子树上——那条管的是全屏预览弹窗里的 svg，这条管的是正文内嵌 Mermaid 块自身的 svg，
@@ -602,14 +646,17 @@
 .doc-editor-mermaid__preview svg {
   max-width: 100%;
 }
+
 .doc-editor-mermaid__placeholder {
   color: var(--doc-editor-fg-muted);
   font-size: 13px;
 }
+
 .doc-editor-mermaid__pane {
   display: flex;
   gap: 12px;
 }
+
 .doc-editor-mermaid__source {
   flex: 1;
   min-height: 140px;
@@ -622,19 +669,23 @@
   color: var(--doc-editor-fg);
   resize: vertical;
 }
+
 .doc-editor-mermaid__preview-pane {
   flex: 1;
   min-height: 140px;
   overflow: auto;
 }
+
 .doc-editor-mermaid__error {
   color: var(--doc-editor-danger);
   font-size: 12px;
 }
+
 .doc-editor-mermaid__actions {
   margin-top: 8px;
   text-align: right;
 }
+
 .doc-editor-mermaid__actions button {
   border: 1px solid var(--doc-editor-accent);
   background: var(--doc-editor-accent);
@@ -653,9 +704,10 @@
   background: var(--doc-editor-bg);
   border: 1px solid var(--doc-editor-border);
   border-radius: var(--doc-editor-radius);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
   padding: 4px;
 }
+
 .doc-editor-bubble-menu button {
   border: none;
   background: none;
@@ -665,15 +717,18 @@
   cursor: pointer;
   font-size: 13px;
 }
+
 .doc-editor-bubble-menu button:hover,
 .doc-editor-bubble-menu button[data-active="true"] {
   background: var(--doc-editor-surface);
 }
+
 .doc-editor-bubble-menu__link-input {
   display: flex;
   align-items: center;
   gap: 4px;
 }
+
 .doc-editor-bubble-menu__link-input input {
   border: 1px solid var(--doc-editor-border);
   border-radius: 4px;
@@ -693,14 +748,16 @@
   background: var(--doc-editor-bg);
   border: 1px solid var(--doc-editor-border);
   border-radius: var(--doc-editor-radius);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
   padding: 4px;
 }
+
 .doc-editor-slash-menu--empty {
   padding: 12px;
   color: var(--doc-editor-fg-muted);
   font-size: 13px;
 }
+
 .doc-editor-slash-menu__item {
   display: flex;
   flex-direction: column;
@@ -712,20 +769,24 @@
   border-radius: 4px;
   cursor: pointer;
 }
+
 .doc-editor-slash-menu__item:hover,
 .doc-editor-slash-menu__item[data-active="true"] {
   background: var(--doc-editor-surface);
 }
+
 .doc-editor-slash-menu__title {
   font-size: 13px;
   color: var(--doc-editor-fg);
 }
+
 .doc-editor-slash-menu__description {
   font-size: 11px;
   color: var(--doc-editor-fg-muted);
 }
 
 /* ---- 链接预览卡片 ---- */
+
 /* 选择器写成 `a.doc-editor-link-card` 而不是单独的 `.doc-editor-link-card`：这张卡片本身
    就是一个 `<a>`，需要覆盖掉上面 `.ProseMirror a { text-decoration: underline; }` 的下划线——
    `.ProseMirror a` 是"类+元素"的组合选择器，特异度 (0,1,1)，比单独的类选择器 (0,1,0) 更高，
@@ -743,9 +804,11 @@ a.doc-editor-link-card {
   text-decoration: none;
   color: var(--doc-editor-fg);
 }
+
 .doc-editor-link-card:hover {
   background: var(--doc-editor-surface);
 }
+
 .doc-editor-link-card__image {
   width: 96px;
   height: 96px;
@@ -753,12 +816,14 @@ a.doc-editor-link-card {
   border-radius: 4px;
   flex-shrink: 0;
 }
+
 .doc-editor-link-card__body {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
+
 .doc-editor-link-card__title {
   font-size: 14px;
   font-weight: 600;
@@ -766,6 +831,7 @@ a.doc-editor-link-card {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .doc-editor-link-card__description {
   font-size: 12px;
   color: var(--doc-editor-fg-muted);
@@ -775,6 +841,7 @@ a.doc-editor-link-card {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
+
 .doc-editor-link-card__meta {
   display: flex;
   align-items: center;
@@ -782,10 +849,12 @@ a.doc-editor-link-card {
   font-size: 11px;
   color: var(--doc-editor-fg-muted);
 }
+
 .doc-editor-link-card__favicon {
   width: 14px;
   height: 14px;
 }
+
 .doc-editor-link-card__url {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -797,10 +866,11 @@ a.doc-editor-link-card {
   background: var(--doc-editor-bg);
   border: 1px solid var(--doc-editor-border);
   border-radius: var(--doc-editor-radius);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
   padding: 10px;
   min-width: 260px;
 }
+
 .doc-editor-link-chooser__url {
   font-size: 12px;
   color: var(--doc-editor-fg-muted);
@@ -809,10 +879,12 @@ a.doc-editor-link-card {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .doc-editor-link-chooser__actions {
   display: flex;
   gap: 8px;
 }
+
 .doc-editor-link-chooser__actions button {
   flex: 1;
   border: 1px solid var(--doc-editor-border);
@@ -823,6 +895,7 @@ a.doc-editor-link-card {
   font-size: 12px;
   cursor: pointer;
 }
+
 .doc-editor-link-chooser__actions button:hover {
   background: var(--doc-editor-surface);
 }
