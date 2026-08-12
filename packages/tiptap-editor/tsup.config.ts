@@ -1,7 +1,7 @@
 import {defineConfig} from 'tsup';
 
 /**
- * tsup build config for @lhx-kit/tiptap-editor.
+ * tsup build config for @luhanxin/tiptap-editor.
  * - ESM-only output (matches `"type": "module"` in package.json).
  * - Emits .d.ts via tsup's bundled dts pipeline; keep tsc for typecheck only.
  * - No minification: published tarballs should remain readable for debugging.

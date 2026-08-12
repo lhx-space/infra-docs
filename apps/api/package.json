@@ -17,7 +17,7 @@
     "backfill:team-workspace": "tsx --env-file=.env scripts/backfill-team-workspace.ts"
   },
   "dependencies": {
-    "@lhx-kit/tiptap-editor": "workspace:*",
+    "@luhanxin/tiptap-editor": "workspace:*",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "@tiptap/core": "^3.30.0",

@@ -1,19 +1,19 @@
-# @lhx-kit/tiptap-editor
+# @luhanxin/tiptap-editor
 
-> @lhx-kit/tiptap-editor package (scaffolded by lhx-cli add package).
+> @luhanxin/tiptap-editor package (scaffolded by lhx-cli add package).
 
 ## Install
 
 ```bash
-npm install @lhx-kit/tiptap-editor
+npm install @luhanxin/tiptap-editor
 # or
-pnpm add @lhx-kit/tiptap-editor
+pnpm add @luhanxin/tiptap-editor
 ```
 
 ## Usage
 
 ```ts
-import {helloTiptapEditor} from '@lhx-kit/tiptap-editor';
+import {helloTiptapEditor} from '@luhanxin/tiptap-editor';
 
 console.log(helloTiptapEditor('reader'));
 ```

@@ -15,7 +15,7 @@ import {MermaidBlock} from './mermaid-node';
  * 链接/Mermaid 图表块，以及加粗/斜体/删除线/行内代码等行内格式化（`StarterKit` 自带）。
  *
  * 这个数组是"纯扩展配置"，刻意不包含任何 `addNodeView`（React 组件）——它同时被两处消费：
- * 1. `apps/api`（通过 `@lhx-kit/tiptap-editor/schema` 子路径引入）用 `@tiptap/core` 的
+ * 1. `apps/api`（通过 `@luhanxin/tiptap-editor/schema` 子路径引入）用 `@tiptap/core` 的
  *    `getSchema()` 构建服务端内容校验用的 ProseMirror `Schema`；
  * 2. 本包主入口 `src/index.ts`（`DocumentEditor` 组件内部）在此基础上用 `.extend({addNodeView})`
  *    追加交互式渲染（代码块的复制/折叠、Mermaid 的编辑态/展示态切换）。

@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@lhx-kit/tiptap-editor": "workspace:*",
+    "@luhanxin/error-monitor": "workspace:*",
+    "@luhanxin/tiptap-editor": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

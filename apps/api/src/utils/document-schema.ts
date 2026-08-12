@@ -1,11 +1,11 @@
-import {documentEditorExtensions} from '@lhx-kit/tiptap-editor/schema';
+import {documentEditorExtensions} from '@luhanxin/tiptap-editor/schema';
 import {getSchema} from '@tiptap/core';
 import type {Schema} from '@tiptap/pm/model';
 import {Node as ProseMirrorNode} from '@tiptap/pm/model';
 
 /**
  * 用编辑器实际支持的扩展集合构建一份 ProseMirror `Schema`，用于服务端内容校验。
- * 这里引入的是 `@lhx-kit/tiptap-editor/schema`（纯 Schema 配置，不含 React/浏览器代码），
+ * 这里引入的是 `@luhanxin/tiptap-editor/schema`（纯 Schema 配置，不含 React/浏览器代码），
  * 跟前端编辑器渲染时用的是同一份定义来源，不会出现"编辑器能输入的内容，后端却拒绝保存"的
  * 不一致（见 design.md 决策 3、wiki-document spec.md「保存内容前进行结构校验」）。
  * 只需要在模块加载时构建一次，`Schema` 本身是不可变的纯数据结构。

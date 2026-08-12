@@ -1,4 +1,4 @@
-import {DocumentEditor} from '@lhx-kit/tiptap-editor';
+import {DocumentEditor} from '@luhanxin/tiptap-editor';
 import {useEffect, useState} from 'react';
 import {toast} from 'sonner';
 import {Button} from '@/components/ui/button';

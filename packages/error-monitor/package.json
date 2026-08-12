@@ -1,7 +1,7 @@
 {
-  "name": "@luhanxin/tiptap-editor",
+  "name": "@luhanxin/error-monitor",
   "version": "0.0.0",
-  "description": "@luhanxin/tiptap-editor package (scaffolded by lhx-cli add package).",
+  "description": "@luhanxin/error-monitor package (scaffolded by lhx-cli add package).",
   "keywords": [
     "lhx-kit"
   ],
@@ -10,7 +10,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/juwenzhang/lhx-kit.git",
-    "directory": "packages/tiptap-editor"
+    "directory": "packages/error-monitor"
   },
   "homepage": "https://juwenzhang.github.io/lhx-kit/",
   "bugs": {
@@ -24,15 +24,17 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./schema": {
-      "types": "./dist/schema.d.ts",
-      "default": "./dist/schema.js"
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
     },
-    "./styles.css": "./src/styles/index.css"
+    "./vue": {
+      "types": "./dist/vue.d.ts",
+      "default": "./dist/vue.js"
+    }
   },
   "files": [
     "dist",
-    "src/styles",
     "README.md",
     "README.zh-CN.md",
     "LICENSE",
@@ -55,28 +57,32 @@
     "@types/node": "^25.6.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "tsup": "^8.3.5",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vue": "^3.5.13"
+  },
+  "dependencies": {
+    "vue-demi": "^0.14.10"
   },
   "engines": {
     "node": ">=18.18.0"
   },
   "peerDependencies": {
     "react": ">=18",
-    "react-dom": ">=18"
+    "react-dom": ">=18",
+    "vue": ">=2.7"
   },
-  "dependencies": {
-    "@tiptap/core": "^3.30.0",
-    "@tiptap/extension-code-block-lowlight": "^3.30.0",
-    "@tiptap/extension-image": "^3.30.0",
-    "@tiptap/extension-placeholder": "^3.30.0",
-    "@tiptap/extension-task-item": "^3.30.0",
-    "@tiptap/extension-task-list": "^3.30.0",
-    "@tiptap/pm": "^3.30.0",
-    "@tiptap/react": "^3.30.0",
-    "@tiptap/starter-kit": "^3.30.0",
-    "@tiptap/suggestion": "^3.30.0",
-    "lowlight": "^3.3.0",
-    "mermaid": "^11.4.1"
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    }
   }
 }

@@ -1,5 +1,5 @@
 /**
- * @lhx-kit/tiptap-editor 编辑器样式：原生 CSS + CSS 自定义属性（变量），不依赖 Tailwind
+ * @luhanxin/tiptap-editor 编辑器样式：原生 CSS + CSS 自定义属性（变量），不依赖 Tailwind
  * （见 design.md 决策——保证未来 `apps/desktop` 复用时不受限）。深色模式跟随消费方在
  * 祖先元素上切换的 `.dark` class（跟 `apps/web` 现有的主题机制一致，不引入第二套主题系统）。
  * 内容阅读宽度居中定宽，风格参考飞书/Notion。

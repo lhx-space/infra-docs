@@ -1,4 +1,4 @@
-import {DocumentEditor, type SaveStatus} from '@lhx-kit/tiptap-editor';
+import {DocumentEditor, type SaveStatus} from '@luhanxin/tiptap-editor';
 import {History, Trash2} from 'lucide-react';
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
