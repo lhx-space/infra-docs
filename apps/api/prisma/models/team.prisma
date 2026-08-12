@@ -1,0 +1,75 @@
+// 团队（租户）：注册时自动创建的"个人 Team"（isPersonal: true）与用户主动创建的多人 Team
+// 是同一张表、同一套模型，不做"个人模式/团队模式"两套逻辑（见 design.md 决策 1）。
+// 没有 ownerId 这种展示用的冗余字段——Team 的所有权完全通过 TeamMember.role 判断，
+// 不重复 Wiki.ownerId 那种需要额外同步的设计。
+model Team {
+  id         String  @id @default(uuid(7)) @db.Uuid
+  name       String
+  isPersonal Boolean @default(false)
+
+  members TeamMember[]
+  wikis   Wiki[]
+  invites TeamInvite[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("teams")
+}
+
+enum TeamRole {
+  OWNER
+  MEMBER
+}
+
+// 团队成员关系表：只设 OWNER/MEMBER 两级角色（见 design.md 决策 2）
+model TeamMember {
+  id     String   @id @default(uuid(7)) @db.Uuid
+  teamId String   @db.Uuid
+  userId String   @db.Uuid
+  role   TeamRole
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+// 团队邀请链接：加入 Team 的唯一途径，不支持精确查找拉人（见 design.md 决策 5）。
+// role 固定 MEMBER（服务层强制，不接受生成 OWNER 邀请）；maxUses 为空表示不限次数。
+model TeamInvite {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  teamId    String    @db.Uuid
+  token     String    @unique
+  role      TeamRole  @default(MEMBER)
+  maxUses   Int?
+  expiresAt DateTime?
+  revokedAt DateTime?
+  createdBy String    @db.Uuid
+
+  team        Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  redemptions TeamInviteRedemption[]
+
+  createdAt DateTime @default(now())
+
+  @@map("team_invites")
+}
+
+// 邀请链接的独立使用记录表：支撑"可重复使用的链接" + "同一人重复兑换幂等"，
+// 不能只在 TeamInvite 上塞一个 usedBy 字段（那样只够记一次，见 design.md 决策 5）
+model TeamInviteRedemption {
+  id       String @id @default(uuid(7)) @db.Uuid
+  inviteId String @db.Uuid
+  userId   String @db.Uuid
+
+  invite TeamInvite @relation(fields: [inviteId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  usedAt DateTime @default(now())
+
+  @@unique([inviteId, userId])
+  @@map("team_invite_redemptions")
+}

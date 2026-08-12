@@ -1,0 +1,57 @@
+// 用户账号表：只放登录/鉴权相关的核心字段
+// 主键统一用 UUID v7（@db.Uuid 存成 Postgres 原生 uuid 类型，16 字节二进制，非文本）：
+// v7 的时间前缀对写入索引友好，随机后缀避免 ID 可被枚举/猜测，也为以后分库分表预留了
+// "不需要中心协调即可全局唯一生成"的能力（见 openspec 讨论，此处不重复展开）
+model User {
+  id       String     @id @default(uuid(7)) @db.Uuid
+  email    String     @unique
+  username String     @unique
+  password String
+  status   UserStatus @default(ACTIVE)
+
+  profile UserProfile?
+
+  // 反向关系：Prisma 要求关系的两端都声明字段；这些字段本身不会被业务代码直接使用，
+  // 实际查询走对应 models/*.ts 里的显式查询
+  ownedWikis        Wiki[]
+  wikiMemberships   WikiMember[]
+  teamMemberships   TeamMember[]
+  inviteRedemptions TeamInviteRedemption[]
+  wikiJoinRequests  WikiJoinRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+  PENDING
+}
+
+// 用户详情表：与 User 一对一，存放非鉴权、可选、后续可能扩展的资料字段
+model UserProfile {
+  id     String @id @default(uuid(7)) @db.Uuid
+  userId String @unique @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  nickname  String?
+  avatarUrl String?
+  bio       String?
+  gender    Gender    @default(UNKNOWN)
+  birthday  DateTime?
+  phone     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_profiles")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  UNKNOWN
+}

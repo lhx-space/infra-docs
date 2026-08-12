@@ -4,7 +4,10 @@ import 'dotenv/config';
 import {defineConfig} from 'prisma/config';
 
 export default defineConfig({
-  schema: 'prisma/schema.prisma',
+  // 指向目录而不是单个文件：启用官方多文件 schema 支持，`prisma/schema.prisma`
+  // 只保留 generator/datasource，各领域的 model 拆到 `prisma/models/*.prisma`
+  // （见 Prisma 官方文档 https://www.prisma.io/docs/orm/prisma-schema/overview/location）
+  schema: 'prisma',
   migrations: {
     path: 'prisma/migrations'
   },
