@@ -10,9 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tiptap/pm": "^3.29.2",
-    "@tiptap/react": "^3.29.2",
-    "@tiptap/starter-kit": "^3.29.2",
+    "@lhx-kit/tiptap-editor": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -21,6 +19,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2",
+    "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0",
     "zustand": "^5.0.14"
   },

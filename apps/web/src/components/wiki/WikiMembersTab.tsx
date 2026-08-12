@@ -1,5 +1,6 @@
 import {Check, Copy, Loader2, Trash2, UserPlus, X} from 'lucide-react';
 import {useEffect, useState} from 'react';
+import {toast} from 'sonner';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
@@ -125,8 +126,11 @@ export function WikiMembersTab({wiki, canManage, currentRole}: WikiMembersTabPro
     try {
       await removeMember(wiki.id, userId);
       setMembers(prev => prev.filter(m => m.userId !== userId));
+      toast.success('已移除成员');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : '移除失败，请稍后重试');
+      const message = err instanceof ApiError ? err.message : '移除失败，请稍后重试';
+      setError(message);
+      toast.error(message);
     } finally {
       setPendingUserId(null);
     }

@@ -1,0 +1,46 @@
+// 文档：归属某个 Wiki，parentId 自引用构成同一 Wiki 内的文档树（见 design.md 决策 1）。
+// content 直接存 Tiptap `editor.getJSON()` 的结果（ProseMirror JSON），标题独立字段，
+// 不依赖解析 content 获得。coverImage 未上传时由 services/document.ts 用跟 Wiki 同一套
+// DiceBear 规则按标题生成默认封面兜底。searchText 是从 content 提取的纯文本，只能由
+// 服务端在保存时派生更新，不接受客户端直传（见 spec.md「保存时同步维护搜索用纯文本字段」）。
+model Document {
+  id         String @id @default(uuid(7)) @db.Uuid
+  wikiId     String @db.Uuid
+  parentId   String? @db.Uuid
+  title      String @default("未命名文档")
+  content    Json   @default("{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\"}]}")
+  searchText String @default("")
+  coverImage String?
+  order      Int    @default(0)
+
+  wiki     Wiki       @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  // 自引用建树：删除父文档时级联删除全部子文档（递归），见 spec.md「级联删除」
+  parent   Document?  @relation("DocumentTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children Document[] @relation("DocumentTree")
+  versions DocumentVersion[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("documents")
+}
+
+// 版本历史：按"编辑会话聚合"触发（见 design.md 决策：版本切分阈值 30 分钟），
+// 每条记录是完整快照（标题+内容），不做差量存储；文档被删除时级联删除全部版本。
+// updatedAt 记录"这条版本记录最后一次被追加编辑的时间"（同一编辑会话内持续自动保存只
+// 更新这个时间，不新建记录）——阈值判断必须比较这个字段而不是固定不变的 createdAt，
+// 否则一次持续 40 分钟的连续编辑会被错误地按 createdAt 切成多条版本。
+model DocumentVersion {
+  id         String @id @default(uuid(7)) @db.Uuid
+  documentId String @db.Uuid
+  title      String
+  content    Json
+  createdBy  String @db.Uuid
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("document_versions")
+}

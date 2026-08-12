@@ -1,5 +1,6 @@
 import {Trash2} from 'lucide-react';
 import {useEffect, useState} from 'react';
+import {toast} from 'sonner';
 import {Button} from '@/components/ui/button';
 import {ApiError} from '@/network';
 import {useAuthStore} from '@/store/auth';
@@ -59,8 +60,11 @@ export function TeamMembersTab({team, canManage}: TeamMembersTabProps) {
     try {
       await removeMember(team.id, userId);
       setMembers(prev => prev.filter(m => m.userId !== userId));
+      toast.success('已移除成员');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : '操作失败，请稍后重试');
+      const message = err instanceof ApiError ? err.message : '操作失败，请稍后重试';
+      setError(message);
+      toast.error(message);
     } finally {
       setPendingUserId(null);
     }

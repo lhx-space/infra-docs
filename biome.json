@@ -38,6 +38,9 @@
       },
       "suspicious": {
         "noExplicitAny": "error"
+      },
+      "complexity": {
+        "useLiteralKeys": "off"
       }
     }
   },

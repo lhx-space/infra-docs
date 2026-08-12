@@ -10,6 +10,7 @@ import {usePinnedStore} from '@/store/pinned';
 import {useShellStore} from '@/store/shell';
 import {useTeamStore} from '@/store/team';
 import {useWikiStore} from '@/store/wiki';
+import {SidebarWikiEntry} from './SidebarWikiEntry';
 import {TeamSwitcher} from './TeamSwitcher';
 
 /** 登录后所有页面共享的侧边栏：品牌区、团队切换器、导航结构、宽度可拖拽 */
@@ -52,6 +53,7 @@ export function Sidebar() {
   const {handleResizeStart} = useResizable({width: sidebarWidth, onResize: setSidebarWidth});
 
   const isHomeActive = location.pathname === '/home';
+  const isAllWikisActive = location.pathname === '/wiki';
 
   return (
     <>
@@ -93,8 +95,8 @@ export function Sidebar() {
           <Link
             to="/home"
             className={cn(
-              'flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-sidebar-accent',
-              isHomeActive && 'bg-sidebar-accent font-medium'
+              'flex items-center gap-2 rounded-md border-l-2 border-transparent px-3 py-2 text-sm hover:bg-sidebar-accent',
+              isHomeActive && 'border-sidebar-primary bg-sidebar-accent font-medium'
             )}
           >
             <HomeIcon className="size-4" />
@@ -108,11 +110,18 @@ export function Sidebar() {
                 // 找不到（列表还没加载完 / 该 Wiki 已被删除）时兜底显示原始 id，不阻塞渲染（见 design.md 决策 7）；
                 // 置顶列表跨团队展示，不受 currentTeamId 筛选（见 team-switcher design.md 决策 3）
                 const name = wikis.find(w => w.id === id)?.name ?? id;
+                const isActive =
+                  location.pathname === `/wiki/${id}` ||
+                  location.pathname.startsWith(`/wiki/${id}/`);
                 return (
                   <Link
                     key={id}
                     to={`/wiki/${id}`}
-                    className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-sidebar-accent"
+                    className={cn(
+                      'flex items-center gap-2 rounded-md border-l-2 border-transparent px-3 py-1.5 text-sm text-muted-foreground hover:bg-sidebar-accent',
+                      isActive &&
+                        'border-sidebar-primary bg-sidebar-accent font-medium text-foreground'
+                    )}
                   >
                     <Pin className="size-3.5" />
                     <span className="truncate">{name}</span>
@@ -135,22 +144,19 @@ export function Sidebar() {
           </div>
           <Link
             to="/wiki"
-            className="flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-sidebar-accent"
+            className={cn(
+              'flex items-center gap-2 rounded-md border-l-2 border-transparent px-3 py-2 text-sm hover:bg-sidebar-accent',
+              isAllWikisActive && 'border-sidebar-primary bg-sidebar-accent font-medium'
+            )}
           >
             <BookOpen className="size-4" />
             全部 Wiki
           </Link>
 
           {teamWikis.length > 0 ? (
-            <div className="flex flex-col gap-1 pl-2">
+            <div className="flex flex-col gap-1">
               {teamWikis.map(wiki => (
-                <Link
-                  key={wiki.id}
-                  to={`/wiki/${wiki.id}`}
-                  className="flex items-center gap-2 truncate rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-sidebar-accent"
-                >
-                  <span className="truncate">{wiki.name}</span>
-                </Link>
+                <SidebarWikiEntry key={wiki.id} wiki={wiki} />
               ))}
             </div>
           ) : (

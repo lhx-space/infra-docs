@@ -1,6 +1,6 @@
 import {Check, ChevronsUpDown, FolderOpen, Plus, Settings, Users} from 'lucide-react';
 import {useState} from 'react';
-import {Link} from 'react-router-dom';
+import {Link, useLocation, useNavigate} from 'react-router-dom';
 import {CreateTeamDialog} from '@/components/team/CreateTeamDialog';
 import {TeamSettingsDialog} from '@/components/team/TeamSettingsDialog';
 import {
@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type {Team} from '@/store/team';
 import {useCurrentTeam, useTeamStore} from '@/store/team';
+import {useWikiStore} from '@/store/wiki';
 
 /**
  * Sidebar 顶部的团队切换器：替代原本平铺展示 + 点击跳转目录页的团队列表。
@@ -20,6 +21,11 @@ import {useCurrentTeam, useTeamStore} from '@/store/team';
  * 不重新拉取数据——`Sidebar` 下方的 Wiki 分区会基于内存里已有的 `wikis` 重新过滤，
  * 感知上是瞬时的（见 team-switcher design.md 决策 1/2）。
  *
+ * 唯一的例外：如果当前正停在某个 Wiki/文档页面，而它不属于新选中的团队，会额外跳回
+ * `/wiki` 列表页——否则停留在一篇跟新团队毫无关系的文档上，从用户视角看"点了团队切换器
+ * 却什么都没发生"，尤其是在文档内部（Sidebar 侧栏之外的主内容区完全不会跟着变化）
+ * （见 team-switcher spec.md「切换团队后离开不属于该团队的页面」）。
+ *
  * 每个团队行末尾保留"设置"和"浏览目录"两个操作入口（点击时 stopPropagation，不触发切换），
  * 对应原来平铺列表里 hover 出现的设置齿轮和跳转目录页的行为，只是挪进了下拉菜单里。
  */
@@ -27,6 +33,9 @@ export function TeamSwitcher() {
   const teams = useTeamStore(state => state.teams);
   const setCurrentTeamId = useTeamStore(state => state.setCurrentTeamId);
   const currentTeam = useCurrentTeam();
+  const wikis = useWikiStore(state => state.wikis);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const [open, setOpen] = useState(false);
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
@@ -37,6 +46,14 @@ export function TeamSwitcher() {
       ? '个人空间'
       : currentTeam.name
     : '选择团队';
+
+  function handleSelectTeam(teamId: string): void {
+    setCurrentTeamId(teamId);
+    const currentWikiId = location.pathname.match(/^\/wiki\/([^/]+)/)?.[1];
+    if (!currentWikiId) return;
+    const currentWiki = wikis.find(w => w.id === currentWikiId);
+    if (currentWiki && currentWiki.teamId !== teamId) navigate('/wiki');
+  }
 
   return (
     <>
@@ -59,7 +76,7 @@ export function TeamSwitcher() {
             return (
               <DropdownMenuItem
                 key={team.id}
-                onSelect={() => setCurrentTeamId(team.id)}
+                onSelect={() => handleSelectTeam(team.id)}
                 className="group justify-between gap-2"
               >
                 <span className="flex min-w-0 flex-1 items-center gap-2">

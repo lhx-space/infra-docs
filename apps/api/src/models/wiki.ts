@@ -95,3 +95,18 @@ export function deleteWiki(id: string): Promise<Wiki> {
 export function updateWikiTeam(id: string, teamId: string): Promise<Wiki> {
   return prisma.wiki.update({where: {id}, data: {teamId}});
 }
+
+/** 搜索接口用：`ILIKE`（`contains` + `insensitive`）匹配名称/简介，范围限定在调用方已确认
+ * 当前用户可访问的 wikiId 集合内（见 wiki-search spec.md「按关键字通过后端接口查询匹配结果」） */
+export function searchWikisByIds(wikiIds: string[], keyword: string): Promise<Wiki[]> {
+  return prisma.wiki.findMany({
+    where: {
+      id: {in: wikiIds},
+      OR: [
+        {name: {contains: keyword, mode: 'insensitive'}},
+        {description: {contains: keyword, mode: 'insensitive'}}
+      ]
+    },
+    orderBy: {updatedAt: 'desc'}
+  });
+}

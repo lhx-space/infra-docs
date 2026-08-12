@@ -1,5 +1,5 @@
-import {BookOpen, Pin} from 'lucide-react';
-import {useMemo, useState} from 'react';
+import {BookOpen, FileText, Pin} from 'lucide-react';
+import {useEffect, useMemo, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {
   CommandDialog,
@@ -9,7 +9,10 @@ import {
   CommandItem,
   CommandList
 } from '@/components/ui/command';
+import type {Document} from '@/services/document';
 import {usePinnedStore} from '@/store/pinned';
+import * as searchStore from '@/store/search';
+import type {Wiki} from '@/store/wiki';
 import {useWikiStore} from '@/store/wiki';
 
 interface SearchDialogProps {
@@ -18,39 +21,64 @@ interface SearchDialogProps {
 }
 
 /**
- * 全局搜索弹窗：搜索范围是当前用户可访问的全部 Wiki（跨团队，不受当前团队上下文筛选，
- * 遵循 team-switcher 已定的"搜索不受当前团队筛选"规则）。不含文档内容搜索——Document
- * 模型还不存在（见 wiki-integration-gaps design.md 决策 3）。
- *
- * 未输入关键字时展示"已置顶"列表作为快捷入口，而不是伪造一个"最近访问"排序——
- * 时间戳字段现在完全不存在，展示置顶是唯一有真实数据支撑的默认视图。
+ * 全局搜索弹窗：搜索范围是当前用户可访问的全部 Wiki 与 Document（跨团队，不受当前团队上下文
+ * 筛选，见 wiki-search spec.md）。有输入关键字时才调用后端 `GET /search`，未输入时展示已置顶
+ * Wiki 列表——Document 数据量级不再适合"全量拉到前端内存里过滤"（见 design.md 决策 9）。
  */
 export function SearchDialog({open, onOpenChange}: SearchDialogProps) {
   const navigate = useNavigate();
   const wikis = useWikiStore(state => state.wikis);
   const pinnedWikiIds = usePinnedStore(state => state.pinnedWikiIds);
   const [keyword, setKeyword] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [results, setResults] = useState<{wikis: Wiki[]; documents: Document[]}>({
+    wikis: [],
+    documents: []
+  });
 
-  const trimmedKeyword = keyword.trim().toLowerCase();
+  const trimmedKeyword = keyword.trim();
 
   const pinnedWikis = useMemo(
     () => wikis.filter(wiki => pinnedWikiIds.includes(wiki.id)),
     [wikis, pinnedWikiIds]
   );
 
-  const filteredWikis = useMemo(() => {
-    if (!trimmedKeyword) return [];
-    return wikis.filter(
-      wiki =>
-        wiki.name.toLowerCase().includes(trimmedKeyword) ||
-        (wiki.description?.toLowerCase().includes(trimmedKeyword) ?? false)
-    );
-  }, [wikis, trimmedKeyword]);
+  useEffect(() => {
+    if (!trimmedKeyword) {
+      setResults({wikis: [], documents: []});
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    const timer = setTimeout(() => {
+      searchStore
+        .search(trimmedKeyword)
+        .then(res => {
+          if (!cancelled) setResults(res);
+        })
+        .catch(() => {
+          if (!cancelled) setResults({wikis: [], documents: []});
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [trimmedKeyword]);
 
-  function handleSelect(wikiId: string): void {
+  function handleSelectWiki(wikiId: string): void {
     onOpenChange(false);
     setKeyword('');
     navigate(`/wiki/${wikiId}`);
+  }
+
+  function handleSelectDocument(doc: Document): void {
+    onOpenChange(false);
+    setKeyword('');
+    navigate(`/wiki/${doc.wikiId}/documents/${doc.id}`);
   }
 
   function handleOpenChange(next: boolean): void {
@@ -59,49 +87,89 @@ export function SearchDialog({open, onOpenChange}: SearchDialogProps) {
   }
 
   const showingPinned = trimmedKeyword.length === 0;
-  const resultList = showingPinned ? pinnedWikis : filteredWikis;
+  const hasResults = results.wikis.length > 0 || results.documents.length > 0;
 
   return (
     <CommandDialog
       open={open}
       onOpenChange={handleOpenChange}
-      title="搜索 Wiki"
-      description="按名称或简介搜索 Wiki，或直接选择已置顶的工作区"
+      title="搜索"
+      description="按名称/简介搜索 Wiki，或按标题/正文搜索文档，也可以直接选择已置顶的工作区"
       shouldFilter={false}
     >
-      <CommandInput
-        placeholder="搜索 Wiki 名称或简介..."
-        value={keyword}
-        onValueChange={setKeyword}
-      />
+      <CommandInput placeholder="搜索 Wiki 或文档..." value={keyword} onValueChange={setKeyword} />
       <CommandList>
-        {resultList.length === 0 ? (
-          <CommandEmpty>
-            {showingPinned
-              ? '暂无置顶内容。当前仅支持按 Wiki 名称/简介搜索'
-              : '暂无匹配结果。当前仅支持按 Wiki 名称/简介搜索'}
-          </CommandEmpty>
+        {showingPinned ? (
+          pinnedWikis.length === 0 ? (
+            <CommandEmpty>
+              暂无置顶内容。可以输入关键字搜索 Wiki 名称/简介或文档标题/正文
+            </CommandEmpty>
+          ) : (
+            <CommandGroup heading="已置顶">
+              {pinnedWikis.map(wiki => (
+                <CommandItem
+                  key={wiki.id}
+                  value={wiki.id}
+                  onSelect={() => handleSelectWiki(wiki.id)}
+                  className="gap-2"
+                >
+                  <Pin className="size-4" />
+                  <div className="flex min-w-0 flex-col">
+                    <span className="truncate text-sm">{wiki.name}</span>
+                    {wiki.description ? (
+                      <span className="truncate text-xs text-muted-foreground">
+                        {wiki.description}
+                      </span>
+                    ) : null}
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )
+        ) : searching ? (
+          <CommandEmpty>搜索中...</CommandEmpty>
+        ) : !hasResults ? (
+          <CommandEmpty>暂无匹配结果</CommandEmpty>
         ) : (
-          <CommandGroup heading={showingPinned ? '已置顶' : '搜索结果'}>
-            {resultList.map(wiki => (
-              <CommandItem
-                key={wiki.id}
-                value={wiki.id}
-                onSelect={() => handleSelect(wiki.id)}
-                className="gap-2"
-              >
-                {showingPinned ? <Pin className="size-4" /> : <BookOpen className="size-4" />}
-                <div className="flex min-w-0 flex-col">
-                  <span className="truncate text-sm">{wiki.name}</span>
-                  {wiki.description ? (
-                    <span className="truncate text-xs text-muted-foreground">
-                      {wiki.description}
-                    </span>
-                  ) : null}
-                </div>
-              </CommandItem>
-            ))}
-          </CommandGroup>
+          <>
+            {results.wikis.length > 0 ? (
+              <CommandGroup heading="Wiki">
+                {results.wikis.map(wiki => (
+                  <CommandItem
+                    key={wiki.id}
+                    value={`wiki-${wiki.id}`}
+                    onSelect={() => handleSelectWiki(wiki.id)}
+                    className="gap-2"
+                  >
+                    <BookOpen className="size-4" />
+                    <div className="flex min-w-0 flex-col">
+                      <span className="truncate text-sm">{wiki.name}</span>
+                      {wiki.description ? (
+                        <span className="truncate text-xs text-muted-foreground">
+                          {wiki.description}
+                        </span>
+                      ) : null}
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ) : null}
+            {results.documents.length > 0 ? (
+              <CommandGroup heading="文档">
+                {results.documents.map(doc => (
+                  <CommandItem
+                    key={doc.id}
+                    value={`document-${doc.id}`}
+                    onSelect={() => handleSelectDocument(doc)}
+                    className="gap-2"
+                  >
+                    <FileText className="size-4" />
+                    <span className="truncate text-sm">{doc.title}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ) : null}
+          </>
         )}
       </CommandList>
     </CommandDialog>

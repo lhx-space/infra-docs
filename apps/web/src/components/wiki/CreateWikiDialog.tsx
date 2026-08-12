@@ -1,5 +1,6 @@
 import {ImagePlus, Loader2} from 'lucide-react';
 import {type ChangeEvent, type SubmitEvent, useRef, useState} from 'react';
+import {toast} from 'sonner';
 import {Button} from '@/components/ui/button';
 import {
   Dialog,
@@ -76,6 +77,7 @@ export function CreateWikiDialog({open, onOpenChange}: CreateWikiDialogProps) {
         teamId: currentTeam?.id
       });
       handleOpenChange(false);
+      toast.success('创建成功');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '创建失败，请稍后重试');
     } finally {

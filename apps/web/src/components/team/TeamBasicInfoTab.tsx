@@ -1,5 +1,6 @@
 import {Loader2} from 'lucide-react';
 import {type SubmitEvent, useState} from 'react';
+import {toast} from 'sonner';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
@@ -48,9 +49,12 @@ export function TeamBasicInfoTab({team, canEdit, canDelete, onDeleted}: TeamBasi
     setError(null);
     try {
       await deleteTeam(team.id);
+      toast.success('团队已删除');
       onDeleted();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : '删除失败，请稍后重试');
+      const message = err instanceof ApiError ? err.message : '删除失败，请稍后重试';
+      setError(message);
+      toast.error(message);
       setConfirmingDelete(false);
     } finally {
       setDeleting(false);

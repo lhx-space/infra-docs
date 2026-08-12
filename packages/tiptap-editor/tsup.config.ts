@@ -7,7 +7,7 @@ import {defineConfig} from 'tsup';
  * - No minification: published tarballs should remain readable for debugging.
  */
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'src/schema.ts'],
   format: ['esm'],
   dts: true,
   clean: true,

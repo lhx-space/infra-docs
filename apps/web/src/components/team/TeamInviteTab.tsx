@@ -1,5 +1,6 @@
 import {Copy, Loader2} from 'lucide-react';
 import {useState} from 'react';
+import {toast} from 'sonner';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
@@ -54,8 +55,11 @@ export function TeamInviteTab({team}: TeamInviteTabProps) {
     try {
       await revokeInvite(team.id, invite.id);
       setInvite(null);
+      toast.success('邀请链接已失效');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : '失效失败，请稍后重试');
+      const message = err instanceof ApiError ? err.message : '失效失败，请稍后重试';
+      setError(message);
+      toast.error(message);
     } finally {
       setRevoking(false);
     }

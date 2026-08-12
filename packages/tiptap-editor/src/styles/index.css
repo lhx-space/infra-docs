@@ -1,0 +1,828 @@
+/**
+ * @lhx-kit/tiptap-editor 编辑器样式：原生 CSS + CSS 自定义属性（变量），不依赖 Tailwind
+ * （见 design.md 决策——保证未来 `apps/desktop` 复用时不受限）。深色模式跟随消费方在
+ * 祖先元素上切换的 `.dark` class（跟 `apps/web` 现有的主题机制一致，不引入第二套主题系统）。
+ * 内容阅读宽度居中定宽，风格参考飞书/Notion。
+ *
+ * 颜色变量统一用 `var(--xxx, 兜底值)`：`apps/web` 的 `globals.css` 已经定义了
+ * `--background`/`--foreground`/`--border`/`--muted`/`--primary` 等一套主题变量（浅色和
+ * `.dark` 各一份），这里优先复用它们，保证编辑器内容区的深色配色跟应用整体主题完全一致
+ * （之前编辑器自己写死了一套接近 GitHub Dark 的配色，跟应用本身偏中性灰的深色主题色差
+ * 很大）；宿主没有定义这些变量时（比如未来独立于 `apps/web` 复用这个包），兜底值继续用
+ * 原来那套配色，不会裸奔。
+ */
+
+:root {
+  --doc-editor-fg: var(--foreground, #1f2328);
+  --doc-editor-fg-muted: var(--muted-foreground, #6b7280);
+  --doc-editor-bg: var(--background, #ffffff);
+  --doc-editor-border: var(--border, #e5e7eb);
+  --doc-editor-accent: var(--primary, #2563eb);
+  --doc-editor-accent-fg: var(--primary-foreground, #ffffff);
+  --doc-editor-surface: var(--muted, #f9fafb);
+  --doc-editor-code-bg: var(--muted, #f6f8fa);
+  --doc-editor-danger: var(--destructive, #dc2626);
+  /* 这个值是你实测确认过的（浏览器里选中 `.ProseMirror` 量出来正好符合预期），不要再改回
+     820/868 之类"理论上算出来"的数字——上一轮我按 `border-box` 心算出 868 才是理论正确值，
+     但实测你要的效果对应的是 1070，说明实际生效的盒模型/层级跟我理论推的不完全一致，
+     既然 1070 已经是验证过的正确结果，就以它为准，不要再往回改。 */
+  --doc-editor-max-width: 1070px;
+  --doc-editor-outline-width: 250px;
+  --doc-editor-radius: 6px;
+  /* TOC 和正文共用同一个字号变量：不需要区分"目录字体更小"，跟飞书一致 */
+  --doc-editor-font-size: 18px;
+}
+
+.dark {
+  --doc-editor-fg: var(--foreground, #e6edf3);
+  --doc-editor-fg-muted: var(--muted-foreground, #9ca3af);
+  --doc-editor-bg: var(--background, #0d1117);
+  --doc-editor-border: var(--border, #30363d);
+  --doc-editor-accent: var(--primary, #3b82f6);
+  --doc-editor-accent-fg: var(--primary-foreground, #0d1117);
+  --doc-editor-surface: var(--muted, #161b22);
+  --doc-editor-code-bg: var(--muted, #161b22);
+  --doc-editor-danger: var(--destructive, #f87171);
+}
+
+.doc-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  color: var(--doc-editor-fg);
+  background: var(--doc-editor-bg);
+}
+
+.doc-editor--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+.doc-editor__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--doc-editor-border);
+  font-size: 13px;
+}
+
+.doc-editor__toolbar-btn {
+  border: 1px solid var(--doc-editor-border);
+  background: transparent;
+  color: var(--doc-editor-fg);
+  border-radius: var(--doc-editor-radius);
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.doc-editor__toolbar-btn:hover {
+  background: var(--doc-editor-surface);
+}
+
+.doc-editor__spacer {
+  flex: 1;
+}
+
+.doc-editor__save-status {
+  color: var(--doc-editor-fg-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.doc-editor__save-status--error {
+  color: var(--doc-editor-danger);
+}
+
+.doc-editor__save-status--error button {
+  border: none;
+  background: none;
+  color: var(--doc-editor-accent);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.doc-editor__offline-badge {
+  color: var(--doc-editor-danger);
+  font-size: 12px;
+}
+
+.doc-editor__body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  /* 大纲的响应式隐藏（下面 `.doc-editor-outline` 的 `@container` 规则）要跟着这个容器
+     自身的实际宽度走，不是跟着整个浏览器视口宽度走——不然 Sidebar 拖拽变宽/变窄时，
+     `.doc-editor__body` 的实际可用宽度已经变了，但视口宽度（`@media`）完全不知道，
+     会出现"Sidebar 拉宽后大纲跟正文重叠，但大纲又没有按预期隐藏"的错位（大纲和 Sidebar
+     两者的显隐/宽度原来各自独立计算、互不感知）。 */
+  container-type: inline-size;
+  container-name: doc-editor-body;
+}
+
+.doc-editor__content-wrapper {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* 标题 + 正文的共享居中定宽容器（跟飞书一致：标题是内容的第一行，同一栏宽度，
+   一起滚动，不是页面级单独一条通栏）。`box-sizing` 沿用宿主 Tailwind Preflight 的
+   `border-box`（这里不再额外覆盖成 `content-box`），`max-width` 是含左右 padding 在内的
+   整个盒子宽度——`--doc-editor-max-width: 1070px` 就是在这个盒模型下实测确认过的值，
+   不要再按"纯内容宽度"的假设去换算/改动这个数字。 */
+.doc-editor__canvas {
+  max-width: var(--doc-editor-max-width);
+  margin: 0 auto;
+  padding: 32px 24px 120px;
+}
+
+.doc-editor__title {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--doc-editor-fg);
+  font-size: 1.875em;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0 0 0.4em;
+  padding: 0;
+}
+
+.doc-editor__title::placeholder {
+  color: var(--doc-editor-fg-muted);
+}
+
+.doc-editor__title:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+/* 定宽/居中已经挪到 `.doc-editor__canvas`，`EditorContent` 本身不需要额外规则，
+   排版细节都在下面的 `.ProseMirror` 系列选择器里 */
+
+/* ---- 大纲导航 ----
+ * 直接融进正文左侧的留白区域，跟页面背景是同一色调，没有卡片边框/阴影/背景色块——
+ * 不是"悬浮在内容上方"的浮层，是跟页面融为一体的纯文本列表（对照飞书：左侧目录就是
+ * 一串贴在页面留白里的文字，不是一张浮在上面的卡片）。只是用 `position: absolute` 让它
+ * 不占 `.doc-editor__body` 的 flex 宽度分配，这样有没有大纲、大纲展开/收起，都不会把
+ * 居中的正文挤来挤去。只有存在标题节点时才渲染（见 DocumentOutline.tsx），
+ * 视口太窄（放不下这块区域）时隐藏。
+ *
+ * 固定贴在 `.doc-editor__body` 左边缘（`left: 12px`），紧挨着 Sidebar 这一侧，不是跟着
+ * 正文的位置走——这是产品明确要的效果（大纲挨着 Sidebar，不是漂在 Sidebar 和正文中间的
+ * 空白里）。真正需要动态计算的是"多宽的容器才有资格显示大纲"这个阈值：正文是居中的，
+ * 容器越窄，正文左边距越小，大纲（占到 `12+250=262px`）就越容易撞上正文；容器足够宽时，
+ * 正文左边距天然会比大纲的占位更宽，两者就不会重叠。低于下面这个阈值直接隐藏大纲，
+ * 不做"挤压/缩小"这种半吊子处理。
+ */
+.doc-editor-outline {
+  position: absolute;
+  left: 12px;
+  top: 16px;
+  bottom: 16px;
+  width: var(--doc-editor-outline-width);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+}
+.doc-editor-outline > * {
+  pointer-events: auto;
+}
+
+.doc-editor-outline__toggle {
+  align-self: flex-start;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--doc-editor-fg-muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+.doc-editor-outline__toggle:hover {
+  color: var(--doc-editor-fg);
+}
+
+.doc-editor-outline__list {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 2px 0;
+}
+
+/* 阈值是配着上面 `left: 12px` 的固定定位、`--doc-editor-max-width: 1070px` 算出来的
+   （之前这里的公式还在用旧的 868 去推算，跟实际值 1070 不是一个数，这是一个真实的
+   遗留 bug——大纲隐藏的时机跟实际内容宽度错位，容器宽度在 1070~1440px 之间时大纲会在
+   本该隐藏的时候还显示着，跟正文撞在一起）：容器宽度 W 时，正文（居中）左边距是
+   `(W - 1070) / 2`；大纲固定占了 `[12, 12+250=262]` 这一段。要保证正文左边距比大纲
+   占位还多留 24px 的呼吸空间，即 `(W-1070)/2 - 262 ≥ 24` ⇒ `W ≥ 1642`；比这更窄就直接
+   隐藏大纲，不做挤压/缩小。*/
+@container doc-editor-body (max-width: 1641px) {
+  .doc-editor-outline {
+    display: none;
+  }
+}
+
+.doc-editor-outline__row {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.doc-editor-outline__caret {
+  flex-shrink: 0;
+  width: 16px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--doc-editor-fg-muted);
+  cursor: pointer;
+  font-size: 10px;
+}
+.doc-editor-outline__caret--placeholder {
+  cursor: default;
+}
+
+.doc-editor-outline__item {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  border: none;
+  background: none;
+  color: var(--doc-editor-fg-muted);
+  font-size: var(--doc-editor-font-size);
+  padding: 3px 2px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.doc-editor-outline__item:hover {
+  color: var(--doc-editor-fg);
+  text-decoration: underline;
+}
+
+/* ---- 排版 ---- */
+.ProseMirror {
+  outline: none;
+  line-height: 1.75;
+  font-size: var(--doc-editor-font-size);
+}
+
+.ProseMirror h1 {
+  font-size: 1.875em;
+  font-weight: 700;
+  margin: 1.4em 0 0.6em;
+}
+.ProseMirror h2 {
+  font-size: 1.5em;
+  font-weight: 700;
+  margin: 1.3em 0 0.5em;
+}
+.ProseMirror h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  margin: 1.2em 0 0.5em;
+}
+.ProseMirror p {
+  margin: 0.5em 0;
+}
+.ProseMirror blockquote {
+  border-left: 3px solid var(--doc-editor-border);
+  padding-left: 12px;
+  color: var(--doc-editor-fg-muted);
+  margin: 0.8em 0;
+}
+.ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--doc-editor-border);
+  margin: 1.5em 0;
+}
+.ProseMirror ul,
+.ProseMirror ol {
+  padding-left: 1.4em;
+}
+/* 消费方（`apps/web`）的全局 reset 会把 `list-style: none` 挂在 `html`/`body` 上，
+   而 `list-style` 是可继承属性，会一路继承进来吃掉圆点/序号——这里显式声明一次，
+   不依赖任何外部环境的默认样式（跟这份 CSS「不依赖特定构建工具/宿主样式」的原则一致）。 */
+.ProseMirror ul {
+  list-style-type: disc;
+}
+.ProseMirror ol {
+  list-style-type: decimal;
+}
+.ProseMirror li {
+  margin: 0.2em 0;
+}
+.ProseMirror a {
+  color: var(--doc-editor-accent);
+  text-decoration: underline;
+}
+.ProseMirror code {
+  background: var(--doc-editor-code-bg);
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+  font-size: 0.9em;
+}
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--doc-editor-fg-muted);
+  float: left;
+  pointer-events: none;
+  height: 0;
+}
+
+/* 任务列表——checkbox 跟文字没对齐的根因：`<label>` 是浏览器原生 inline 元素，
+ * 它的渲染高度只由内部 `<input type="checkbox">` 的固有尺寸决定（各浏览器不一致，
+ * Chrome 下大约 13px 左右，还带一点自己的默认 margin），而右边 `<div>` 里第一行文字的
+ * 高度是 `font-size(18px) * line-height(1.75) ≈ 31.5px`——两个高度完全不同的盒子，
+ * 之前只在 `label` 上加了一个拍脑袋的 `margin-top: 3px` 硬凑，凑出来的偏移量跟实际需要的
+ * `(31.5 - checkbox 高度) / 2` 不是一个数，看起来就是"没对齐"。
+ *
+ * 正确的做法：给 `<label>` 一个跟正文首行完全一致的高度（用 `em` 而不是写死 px，字号
+ * 以后变了也不用再手动调这个数字），再用 flex 居中把 checkbox 摆进这个高度的正中间——
+ * 这样 checkbox 的视觉中心永远和"文字首行的中心"对齐，不管字号、checkbox 在各浏览器下
+ * 的实际渲染尺寸是多少。checkbox 本身也显式定义成固定的 16px 方块 + 去掉浏览器默认
+ * margin，不然不同浏览器下 checkbox 自身尺寸不一致，居中的效果也会跟着飘。
+ */
+.ProseMirror ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0.2em;
+}
+.ProseMirror ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.ProseMirror ul[data-type="taskList"] li > label {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: calc(1em * 1.75);
+  margin: 0;
+}
+.ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--doc-editor-accent);
+}
+.ProseMirror ul[data-type="taskList"] li > div > p {
+  margin: 0;
+}
+
+/* 图片：限宽 + 懒加载已在标签属性层处理，这里只负责视觉展示。单击是 ProseMirror 原生的
+   节点选中（见下面 `.ProseMirror-selectednode`），双击才弹出全屏预览——跟单击选中/
+   双击预览两个操作分开，不冲突（见 document-editor spec.md「图片双击预览」） */
+.doc-editor-image {
+  max-width: 100%;
+  border-radius: var(--doc-editor-radius);
+  display: block;
+  margin: 0.5em 0;
+  cursor: pointer;
+}
+
+/* 图片被 ProseMirror 选中时的视觉反馈——原来完全没有任何样式，选中后在视图上根本看不出来 */
+.ProseMirror-selectednode.doc-editor-image {
+  outline: 2px solid var(--doc-editor-accent);
+  outline-offset: 2px;
+}
+
+/* 双击图片/Mermaid 图表后的全屏预览遮罩（见 document-editor spec.md「图片/图表双击预览」），
+   两者共用同一套遮罩样式，内部内容（img 或 svg）各自限宽限高 */
+.doc-editor-image-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.8);
+  cursor: zoom-out;
+}
+.doc-editor-image-preview img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 4px;
+  cursor: default;
+}
+.doc-editor-image-preview .doc-editor-mermaid-preview {
+  background: var(--doc-editor-bg);
+  border-radius: var(--doc-editor-radius);
+  padding: 24px;
+  cursor: default;
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: auto;
+}
+.doc-editor-image-preview .doc-editor-mermaid-preview svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 手势缩放容器（见 components/ZoomableMedia.tsx）：`touch-action: none` 是必须的——
+   不加的话触屏上的双指缩放/单指拖动会被浏览器当成"整页缩放/滚动"抢走，我们自己的
+   pointer/touch 事件处理函数根本收不到手势。`transform-origin: center` 保证缩放是围绕
+   画面中心放大，不是围绕左上角跑偏。 */
+.doc-editor-zoomable {
+  display: inline-flex;
+  touch-action: none;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.doc-editor-image-uploading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px dashed var(--doc-editor-border);
+  border-radius: var(--doc-editor-radius);
+  color: var(--doc-editor-fg-muted);
+  font-size: 13px;
+}
+.doc-editor-image-uploading::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--doc-editor-border);
+  border-top-color: var(--doc-editor-accent);
+  animation: doc-editor-spin 0.8s linear infinite;
+}
+@keyframes doc-editor-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- 代码块 ---- */
+.doc-editor-code-block {
+  margin: 0.8em 0;
+  border: 1px solid var(--doc-editor-border);
+  border-radius: var(--doc-editor-radius);
+  overflow: hidden;
+}
+.doc-editor-code-block__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--doc-editor-surface);
+  border-bottom: 1px solid var(--doc-editor-border);
+  font-size: 12px;
+  color: var(--doc-editor-fg-muted);
+}
+.doc-editor-code-block__collapse,
+.doc-editor-code-block__copy {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+}
+.doc-editor-code-block__language {
+  flex: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.doc-editor-code-block__content {
+  margin: 0;
+  padding: 12px;
+  background: var(--doc-editor-code-bg);
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+/* 语法高亮：浅色主题（近似 github-light） */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal {
+  color: #cf222e;
+}
+.hljs-string,
+.hljs-attr {
+  color: #0a3069;
+}
+.hljs-comment {
+  color: #6e7781;
+  font-style: italic;
+}
+.hljs-title,
+.hljs-name,
+.hljs-function {
+  color: #8250df;
+}
+.hljs-number {
+  color: #0550ae;
+}
+
+/* 语法高亮：深色主题（近似 github-dark），跟随 .dark 切换 */
+.dark .hljs-keyword,
+.dark .hljs-selector-tag,
+.dark .hljs-literal {
+  color: #ff7b72;
+}
+.dark .hljs-string,
+.dark .hljs-attr {
+  color: #a5d6ff;
+}
+.dark .hljs-comment {
+  color: #8b949e;
+}
+.dark .hljs-title,
+.dark .hljs-name,
+.dark .hljs-function {
+  color: #d2a8ff;
+}
+.dark .hljs-number {
+  color: #79c0ff;
+}
+
+/* ---- Mermaid ---- */
+.doc-editor-mermaid {
+  margin: 0.8em 0;
+  border: 1px solid var(--doc-editor-border);
+  border-radius: var(--doc-editor-radius);
+  padding: 12px;
+}
+.doc-editor-mermaid--display {
+  position: relative;
+  cursor: pointer;
+  text-align: center;
+}
+.doc-editor-mermaid__edit-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  opacity: 0;
+  border: 1px solid var(--doc-editor-border);
+  background: var(--doc-editor-bg);
+  color: var(--doc-editor-fg-muted);
+  border-radius: var(--doc-editor-radius);
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.doc-editor-mermaid--display:hover .doc-editor-mermaid__edit-btn {
+  opacity: 1;
+}
+.doc-editor-mermaid__edit-btn:hover {
+  background: var(--doc-editor-surface);
+  color: var(--doc-editor-fg);
+}
+/* biome-ignore lint/style/noDescendingSpecificity: 跟前面「图片/图表双击预览」遮罩里的
+   `.doc-editor-image-preview .doc-editor-mermaid-preview svg`（特异度更高）作用在完全不同的
+   DOM 子树上——那条管的是全屏预览弹窗里的 svg，这条管的是正文内嵌 Mermaid 块自身的 svg，
+   两者不会同时匹配同一个元素，不存在互相覆盖的风险 */
+.doc-editor-mermaid__preview svg {
+  max-width: 100%;
+}
+.doc-editor-mermaid__placeholder {
+  color: var(--doc-editor-fg-muted);
+  font-size: 13px;
+}
+.doc-editor-mermaid__pane {
+  display: flex;
+  gap: 12px;
+}
+.doc-editor-mermaid__source {
+  flex: 1;
+  min-height: 140px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  padding: 8px;
+  border: 1px solid var(--doc-editor-border);
+  border-radius: var(--doc-editor-radius);
+  background: var(--doc-editor-code-bg);
+  color: var(--doc-editor-fg);
+  resize: vertical;
+}
+.doc-editor-mermaid__preview-pane {
+  flex: 1;
+  min-height: 140px;
+  overflow: auto;
+}
+.doc-editor-mermaid__error {
+  color: var(--doc-editor-danger);
+  font-size: 12px;
+}
+.doc-editor-mermaid__actions {
+  margin-top: 8px;
+  text-align: right;
+}
+.doc-editor-mermaid__actions button {
+  border: 1px solid var(--doc-editor-accent);
+  background: var(--doc-editor-accent);
+  color: var(--doc-editor-accent-fg);
+  border-radius: var(--doc-editor-radius);
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+/* ---- 悬浮工具栏 ---- */
+.doc-editor-bubble-menu {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--doc-editor-bg);
+  border: 1px solid var(--doc-editor-border);
+  border-radius: var(--doc-editor-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+}
+.doc-editor-bubble-menu button {
+  border: none;
+  background: none;
+  color: var(--doc-editor-fg);
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.doc-editor-bubble-menu button:hover,
+.doc-editor-bubble-menu button[data-active="true"] {
+  background: var(--doc-editor-surface);
+}
+.doc-editor-bubble-menu__link-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.doc-editor-bubble-menu__link-input input {
+  border: 1px solid var(--doc-editor-border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 13px;
+  background: var(--doc-editor-bg);
+  color: var(--doc-editor-fg);
+}
+
+/* ---- 斜杠命令菜单 ---- */
+.doc-editor-slash-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--doc-editor-bg);
+  border: 1px solid var(--doc-editor-border);
+  border-radius: var(--doc-editor-radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  padding: 4px;
+}
+.doc-editor-slash-menu--empty {
+  padding: 12px;
+  color: var(--doc-editor-fg-muted);
+  font-size: 13px;
+}
+.doc-editor-slash-menu__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.doc-editor-slash-menu__item:hover,
+.doc-editor-slash-menu__item[data-active="true"] {
+  background: var(--doc-editor-surface);
+}
+.doc-editor-slash-menu__title {
+  font-size: 13px;
+  color: var(--doc-editor-fg);
+}
+.doc-editor-slash-menu__description {
+  font-size: 11px;
+  color: var(--doc-editor-fg-muted);
+}
+
+/* ---- 链接预览卡片 ---- */
+/* 选择器写成 `a.doc-editor-link-card` 而不是单独的 `.doc-editor-link-card`：这张卡片本身
+   就是一个 `<a>`，需要覆盖掉上面 `.ProseMirror a { text-decoration: underline; }` 的下划线——
+   `.ProseMirror a` 是"类+元素"的组合选择器，特异度 (0,1,1)，比单独的类选择器 (0,1,0) 更高，
+   之前只能靠 `!important` 强行盖过去。这里把选择器也写成"元素+类"的组合，特异度同样是
+   (0,1,1)，跟 `.ProseMirror a` 打平后由后面的书写顺序决定胜负（这条规则在文件里排在
+   `.ProseMirror a` 后面），不需要 `!important` 就能生效——`!important` 会整体打乱级联优先级，
+   后面任何想再覆盖它的规则都得跟着用 `!important`，滚雪球式蔓延。 */
+a.doc-editor-link-card {
+  display: flex;
+  gap: 12px;
+  margin: 0.8em 0;
+  padding: 10px;
+  border: 1px solid var(--doc-editor-border);
+  border-radius: var(--doc-editor-radius);
+  text-decoration: none;
+  color: var(--doc-editor-fg);
+}
+.doc-editor-link-card:hover {
+  background: var(--doc-editor-surface);
+}
+.doc-editor-link-card__image {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.doc-editor-link-card__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.doc-editor-link-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-editor-link-card__description {
+  font-size: 12px;
+  color: var(--doc-editor-fg-muted);
+  margin: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.doc-editor-link-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--doc-editor-fg-muted);
+}
+.doc-editor-link-card__favicon {
+  width: 14px;
+  height: 14px;
+}
+.doc-editor-link-card__url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- 粘贴链接选择提示 ---- */
+.doc-editor-link-chooser {
+  background: var(--doc-editor-bg);
+  border: 1px solid var(--doc-editor-border);
+  border-radius: var(--doc-editor-radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  padding: 10px;
+  min-width: 260px;
+}
+.doc-editor-link-chooser__url {
+  font-size: 12px;
+  color: var(--doc-editor-fg-muted);
+  margin: 0 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.doc-editor-link-chooser__actions {
+  display: flex;
+  gap: 8px;
+}
+.doc-editor-link-chooser__actions button {
+  flex: 1;
+  border: 1px solid var(--doc-editor-border);
+  background: transparent;
+  color: var(--doc-editor-fg);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.doc-editor-link-chooser__actions button:hover {
+  background: var(--doc-editor-surface);
+}

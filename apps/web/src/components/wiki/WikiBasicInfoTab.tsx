@@ -1,5 +1,6 @@
 import {Loader2} from 'lucide-react';
 import {type ChangeEvent, type SubmitEvent, useEffect, useRef, useState} from 'react';
+import {toast} from 'sonner';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
@@ -117,9 +118,12 @@ export function WikiBasicInfoTab({
     setError(null);
     try {
       await deleteWiki(wiki.id);
+      toast.success('工作区已删除');
       onDeleted();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : '删除失败，请稍后重试');
+      const message = err instanceof ApiError ? err.message : '删除失败，请稍后重试';
+      setError(message);
+      toast.error(message);
       setConfirmingDelete(false);
     } finally {
       setDeleting(false);
@@ -132,10 +136,13 @@ export function WikiBasicInfoTab({
     setError(null);
     try {
       await transferWikiTeam(wiki.id, transferTargetId);
+      toast.success('已转移到新团队');
       setConfirmingTransfer(false);
       onTransferred();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : '转移失败，请稍后重试');
+      const message = err instanceof ApiError ? err.message : '转移失败，请稍后重试';
+      setError(message);
+      toast.error(message);
     } finally {
       setTransferring(false);
     }

@@ -20,6 +20,7 @@ model Wiki {
   members      WikiMember[]
   shareLinks   WikiShareLink[]
   joinRequests WikiJoinRequest[]
+  documents    Document[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
