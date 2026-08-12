@@ -1,11 +1,17 @@
 import {create} from 'zustand';
-import {getMe, type UserProfile} from '@/services/user';
+import {
+  getMe,
+  type UpdateProfileInput,
+  type UserProfile,
+  updateProfile as updateProfileService
+} from '@/services/user';
 
-export type {UserProfile};
+export type {UpdateProfileInput, UserProfile};
 
 interface ProfileState {
   profile: UserProfile | null;
   fetchProfile: () => Promise<void>;
+  updateProfile: (input: UpdateProfileInput) => Promise<UserProfile>;
   clearProfile: () => void;
 }
 
@@ -34,6 +40,13 @@ export const useProfileStore = create<ProfileState>(set => ({
     } catch {
       // 静默失败：保留调用前的 profile（可能是 null，也可能是上一次成功拉取的结果）
     }
+  },
+
+  /** 保存后直接用响应体更新本地 profile，不需要重新拉一次 /me（见 design.md 决策 6） */
+  updateProfile: async input => {
+    const {profile} = await updateProfileService(input);
+    set({profile});
+    return profile;
   },
 
   clearProfile: () => set({profile: null})

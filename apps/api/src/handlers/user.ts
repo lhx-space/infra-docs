@@ -1,6 +1,6 @@
 import type {Request, Response} from 'express';
-import {findUserByEmail, findUserByUsername} from '../models/user';
-import {findProfileByUserId} from '../models/user-profile';
+import {z} from 'zod';
+import {upsertUserProfile} from '../models/user-profile';
 import {getMe} from '../services/user';
 
 /** 返回当前登录用户的公开信息 + 资料字段（nickname/avatarUrl/bio），用于用户菜单展示 */
@@ -22,26 +22,31 @@ export async function meHandler(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * 按标识符精确查找用户（用于"添加 Wiki 成员"场景，见 design.md 决策 6）：
- * identifier 含 `@` 走邮箱查找，否则走用户名查找，跟 `services/auth.ts` 的 `login()` 完全一致的判断逻辑。
- * 只返回公开字段（id/username/avatarUrl），不返回 email，避免这个接口被拿去当邮箱查找器。
+ * 只接受并更新 nickname/avatarUrl/bio 三个字段——跟 `/me` GET 暴露的字段边界保持一致，
+ * 即使请求体里携带 gender/birthday/phone 等字段，zod schema 本身就不认识它们，
+ * 天然被忽略，不需要额外的白名单过滤逻辑（见 wiki-integration-gaps design.md 决策 6）。
  */
-export async function lookupUserHandler(req: Request, res: Response): Promise<void> {
-  const identifier = req.query['identifier'];
-  if (typeof identifier !== 'string' || identifier.length === 0) {
-    res.status(400).json({error: 'invalid_input'});
+const updateProfileSchema = z.object({
+  nickname: z.string().max(50).optional(),
+  avatarUrl: z.string().max(2048).optional(),
+  bio: z.string().max(500).optional()
+});
+
+export async function updateProfileHandler(req: Request, res: Response): Promise<void> {
+  const userId = req.user?.id;
+  if (userId === undefined) {
+    res.status(401).json({error: 'unauthorized'});
     return;
   }
 
-  const user = identifier.includes('@')
-    ? await findUserByEmail(identifier)
-    : await findUserByUsername(identifier);
-
-  if (!user) {
-    res.status(404).json({error: 'user_not_found'});
+  const parsed = updateProfileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({error: 'invalid_input', details: parsed.error.flatten()});
     return;
   }
 
-  const profile = await findProfileByUserId(user.id);
-  res.json({id: user.id, username: user.username, avatarUrl: profile?.avatarUrl ?? null});
+  const profile = await upsertUserProfile(userId, parsed.data);
+  res.json({
+    profile: {nickname: profile.nickname, avatarUrl: profile.avatarUrl, bio: profile.bio}
+  });
 }

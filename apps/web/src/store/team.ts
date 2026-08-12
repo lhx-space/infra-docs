@@ -11,9 +11,24 @@ import * as teamService from '@/services/team';
 
 export type {CreateInviteInput, Team, TeamInvite, TeamMember, TeamRole, TeamWikiDirectoryEntry};
 
+const CURRENT_TEAM_STORAGE_KEY = 'current-team-id';
+
+function readStoredCurrentTeamId(): string | null {
+  return localStorage.getItem(CURRENT_TEAM_STORAGE_KEY);
+}
+
+function persistCurrentTeamId(teamId: string): void {
+  localStorage.setItem(CURRENT_TEAM_STORAGE_KEY, teamId);
+}
+
 interface TeamState {
   teams: Team[];
   loading: boolean;
+
+  /** 当前团队上下文，用于筛选 Sidebar/Wiki 列表页展示的内容（见 team-switcher design.md 决策 1）。
+   * 纯前端状态，不落库，持久化在 localStorage，模式跟 `store/pinned.ts`/`store/shell.ts` 一致。 */
+  currentTeamId: string | null;
+  setCurrentTeamId: (teamId: string) => void;
 
   fetchMyTeams: () => Promise<void>;
   createTeam: (name: string) => Promise<Team>;
@@ -38,15 +53,33 @@ interface TeamState {
  * Sidebar 的团队入口等场景共享，避免同样的 `GET /teams/mine` 被拉两次
  * （跟 `store/wiki.ts` 的 `wikis` 共享思路一致）。
  */
-export const useTeamStore = create<TeamState>(set => ({
+export const useTeamStore = create<TeamState>((set, get) => ({
   teams: [],
   loading: false,
+  currentTeamId: readStoredCurrentTeamId(),
+
+  setCurrentTeamId: teamId => {
+    persistCurrentTeamId(teamId);
+    set({currentTeamId: teamId});
+  },
 
   fetchMyTeams: async () => {
     set({loading: true});
     try {
       const {teams} = await teamService.listMyTeams();
       set({teams});
+      // localStorage 里记的 currentTeamId 可能已经失效（比如被移出了那个团队，或者是
+      // 上一个账号登录时留下的值）——这里统一做一次兜底回退，不需要在每个读取
+      // currentTeamId 的组件里各自判断一遍（见 team-switcher design.md 决策 1/2）。
+      const current = get().currentTeamId;
+      const stillValid = current !== null && teams.some(t => t.id === current);
+      if (!stillValid) {
+        const fallback = teams.find(t => t.isPersonal)?.id ?? teams[0]?.id ?? null;
+        if (fallback) {
+          persistCurrentTeamId(fallback);
+          set({currentTeamId: fallback});
+        }
+      }
     } finally {
       set({loading: false});
     }
@@ -104,3 +137,9 @@ export const useTeamStore = create<TeamState>(set => ({
     return teamId;
   }
 }));
+
+/** 当前团队的完整对象（不只是 id），Sidebar/切换器/创建 Wiki 等场景直接用它取名字展示，
+ * 不需要在每个消费点各自 `.find()` 一遍。 */
+export function useCurrentTeam(): Team | undefined {
+  return useTeamStore(state => state.teams.find(t => t.id === state.currentTeamId));
+}

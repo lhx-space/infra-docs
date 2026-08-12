@@ -78,6 +78,7 @@ export function WikiSettingsDialog({wiki, open, onOpenChange}: WikiSettingsDialo
             canEdit={canEditBasicInfo}
             canDelete={canDelete}
             onDeleted={() => onOpenChange(false)}
+            onTransferred={() => onOpenChange(false)}
           />
         ) : (
           <WikiMembersTab wiki={wiki} canManage={canManageMembers} currentRole={role} />

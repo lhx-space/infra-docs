@@ -1,7 +1,5 @@
 import {create} from 'zustand';
 import * as uploadService from '@/services/upload';
-import type {LookupUserResult} from '@/services/user';
-import * as userService from '@/services/user';
 import type {
   CreateWikiInput,
   UpdateWikiInfoInput,
@@ -43,7 +41,6 @@ interface WikiState {
   addMember: (wikiId: string, userId: string, role: WikiRole) => Promise<WikiMember>;
   updateMemberRole: (wikiId: string, userId: string, role: WikiRole) => Promise<WikiMember>;
   removeMember: (wikiId: string, userId: string) => Promise<void>;
-  lookupUser: (identifier: string) => Promise<LookupUserResult>;
   uploadCoverImage: (file: File) => Promise<string>;
   transferWikiTeam: (wikiId: string, teamId: string) => Promise<Wiki>;
 
@@ -119,8 +116,6 @@ export const useWikiStore = create<WikiState>(set => ({
   removeMember: async (wikiId, userId) => {
     await wikiService.removeMember(wikiId, userId);
   },
-
-  lookupUser: identifier => userService.lookupUser(identifier),
 
   uploadCoverImage: async file => {
     const {url} = await uploadService.uploadImage(file);

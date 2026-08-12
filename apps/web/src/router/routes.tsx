@@ -1,3 +1,4 @@
+import {Navigate} from 'react-router-dom';
 import {AuthLayout} from '@/components/auth/AuthLayout';
 import {AppShell} from '@/components/shell/AppShell';
 import type {AppRouteConfig} from './types';
@@ -31,9 +32,11 @@ export const routes: AppRouteConfig[] = [
     meta: {requiresAuth: true},
     children: [
       {
+        // 根路径不再渲染独立页面，直接重定向到 /home（原 Manage Storage 骨架已删除，
+        // 产品方向收敛为 Wiki + 文档模型，见 wiki-integration-gaps proposal.md，BREAKING）
         path: '/',
-        component: () => import('@/pages/Storage'),
-        meta: {title: 'Manage Storage'}
+        component: () => Promise.resolve({default: () => <Navigate to="/home" replace />}),
+        meta: {title: 'Home'}
       },
       {
         path: '/home',

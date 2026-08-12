@@ -1,4 +1,4 @@
-import {Check, LogOut, Monitor, Moon, Sun, SunMoon} from 'lucide-react';
+import {Check, LogOut, Monitor, Moon, Sun, SunMoon, UserPen} from 'lucide-react';
 import {useEffect, useState} from 'react';
 import {
   DropdownMenu,
@@ -15,6 +15,7 @@ import {getAvatarFallbackText} from '@/lib/avatar';
 import {useAuthStore} from '@/store/auth';
 import {useProfileStore} from '@/store/profile';
 import {type ThemePreference, useThemeStore} from '@/store/theme';
+import {ProfileSettingsDialog} from './ProfileSettingsDialog';
 
 const THEME_OPTIONS: Array<{value: ThemePreference; label: string; icon: typeof Sun}> = [
   {value: 'light', label: '浅色', icon: Sun},
@@ -78,6 +79,7 @@ export function UserMenu() {
   const setTheme = useThemeStore(state => state.setTheme);
   const profile = useProfileStore(state => state.profile);
   const fetchProfile = useProfileStore(state => state.fetchProfile);
+  const [profileEditOpen, setProfileEditOpen] = useState(false);
 
   // 只依赖 user?.id：后台定时静默刷新 token 会产生一个内容相同但引用不同的新 user 对象，
   // 不应因此重新拉取一次 /me——只有"登录的人真的变了"才需要重新请求。
@@ -124,6 +126,13 @@ export function UserMenu() {
 
         <DropdownMenuSeparator />
 
+        <DropdownMenuItem onClick={() => setProfileEditOpen(true)}>
+          <UserPen className="size-4" />
+          编辑资料
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>
             <SunMoon className="size-4" />
@@ -147,6 +156,8 @@ export function UserMenu() {
           退出登录
         </DropdownMenuItem>
       </DropdownMenuContent>
+
+      <ProfileSettingsDialog open={profileEditOpen} onOpenChange={setProfileEditOpen} />
     </DropdownMenu>
   );
 }

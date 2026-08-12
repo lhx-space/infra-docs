@@ -20,16 +20,16 @@ export function getMe(): Promise<MeResponse> {
   return http.get<MeResponse>('/me');
 }
 
-export interface LookupUserResult {
-  id: string;
-  username: string;
-  avatarUrl: string | null;
+export interface UpdateProfileInput {
+  nickname?: string;
+  avatarUrl?: string;
+  bio?: string;
 }
 
 /**
- * 按用户名或邮箱精确查找一个已注册用户，用于"添加 Wiki 成员"场景（见 wiki-workspace-console design.md 决策 6）。
- * 查不到时后端返回 404，交给调用方（`store/wiki.ts`）捕获 `ApiError` 后翻译成友好提示，这里不做特殊处理。
+ * 保存当前登录用户的资料字段（昵称/头像/简介）。请求体只允许这三个字段，
+ * gender/birthday/phone 不在暴露范围内（见 wiki-integration-gaps design.md 决策 6）。
  */
-export function lookupUser(identifier: string): Promise<LookupUserResult> {
-  return http.get<LookupUserResult>(`/users/lookup?identifier=${encodeURIComponent(identifier)}`);
+export function updateProfile(input: UpdateProfileInput): Promise<{profile: UserProfile}> {
+  return http.patch<{profile: UserProfile}>('/me/profile', input);
 }

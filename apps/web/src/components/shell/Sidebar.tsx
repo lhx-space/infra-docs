@@ -1,29 +1,18 @@
-import {
-  BookOpen,
-  ChevronsLeft,
-  Home as HomeIcon,
-  Pin,
-  Plus,
-  Search,
-  Settings,
-  Users
-} from 'lucide-react';
+import {BookOpen, ChevronsLeft, Home as HomeIcon, Pin, Plus, Search} from 'lucide-react';
 import {useEffect, useState} from 'react';
 import {Link, useLocation} from 'react-router-dom';
 import {SearchDialog} from '@/components/search/SearchDialog';
-import {CreateTeamDialog} from '@/components/team/CreateTeamDialog';
-import {TeamSettingsDialog} from '@/components/team/TeamSettingsDialog';
 import {Button} from '@/components/ui/button';
 import {CreateWikiDialog} from '@/components/wiki/CreateWikiDialog';
 import {useResizable} from '@/hooks/use-resizable';
 import {cn} from '@/lib/utils';
 import {usePinnedStore} from '@/store/pinned';
 import {useShellStore} from '@/store/shell';
-import type {Team} from '@/store/team';
 import {useTeamStore} from '@/store/team';
 import {useWikiStore} from '@/store/wiki';
+import {TeamSwitcher} from './TeamSwitcher';
 
-/** 登录后所有页面共享的侧边栏：品牌区、导航结构、宽度可拖拽 */
+/** 登录后所有页面共享的侧边栏：品牌区、团队切换器、导航结构、宽度可拖拽 */
 export function Sidebar() {
   const location = useLocation();
   const sidebarWidth = useShellStore(state => state.sidebarWidth);
@@ -34,14 +23,13 @@ export function Sidebar() {
   const fetchWikis = useWikiStore(state => state.fetchWikis);
   const teams = useTeamStore(state => state.teams);
   const fetchMyTeams = useTeamStore(state => state.fetchMyTeams);
+  const currentTeamId = useTeamStore(state => state.currentTeamId);
 
   const [searchOpen, setSearchOpen] = useState(false);
   // "+" 之前只是 navigate('/wiki') 跳到列表页，并没有真正创建 Wiki 的动作——
   // 直接在 Sidebar 本地持有一份创建弹窗状态，跟 WikiList.tsx 里的用法一致，
   // 点击即弹窗，不需要先跳转再在列表页里点一次"新建 Wiki"。
   const [createWikiOpen, setCreateWikiOpen] = useState(false);
-  const [createTeamOpen, setCreateTeamOpen] = useState(false);
-  const [settingsTeam, setSettingsTeam] = useState<Team | null>(null);
 
   // Sidebar 和 WikiList 页面共享同一份列表数据，避免同样的 GET /wikis 被拉两次（见 design.md 决策 7）：
   // 只有 store 里还没有数据时才触发一次拉取；`http.get` 传输层的 Singleflight 去重也覆盖了
@@ -54,9 +42,11 @@ export function Sidebar() {
     if (teams.length === 0) void fetchMyTeams();
   }, [teams.length, fetchMyTeams]);
 
-  // 个人 Team 是注册时自动创建的隐式概念，不在 Sidebar 里单独展示一行——
-  // 这里只列出用户主动创建/加入的多人 Team（见 design.md 决策 1）
-  const visibleTeams = teams.filter(team => !team.isPersonal);
+  // "Wiki" 分区（全部列表）只展示归属当前团队的工作区——这是团队切换器存在的核心意义：
+  // 下面能看到的内容只属于切换器里选中的那个团队（见 team-switcher spec.md「工作区以
+  // Card 形式展示」）；置顶列表（下方）刻意不做这层过滤，保持跨团队展示。
+  const teamWikis = wikis.filter(wiki => wiki.teamId === currentTeamId);
+
   // 钳制到 200-480px 的业务边界在 setSidebarWidth（store/shell.ts）里做，
   // useResizable 本身只管"拖拽手势 → 实时宽度"这段跟侧边栏身份无关的通用交互逻辑
   const {handleResizeStart} = useResizable({width: sidebarWidth, onResize: setSidebarWidth});
@@ -82,6 +72,12 @@ export function Sidebar() {
           <span className="truncate text-sm font-semibold">Yjs Docs</span>
         </div>
 
+        {/* 团队切换器：下面所有团队区块内容（Wiki 列表等）只属于这里选中的团队，
+            切换是纯本地状态变化，不发生路由跳转（见 team-switcher design.md 决策 2/3） */}
+        <div className="px-2 pb-2">
+          <TeamSwitcher />
+        </div>
+
         <div className="border-t" />
 
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
@@ -105,6 +101,27 @@ export function Sidebar() {
             Home
           </Link>
 
+          {pinnedWikiIds.length > 0 ? (
+            <div className="mt-4 flex flex-col gap-1">
+              <span className="px-3 text-xs font-medium text-muted-foreground">置顶</span>
+              {pinnedWikiIds.map(id => {
+                // 找不到（列表还没加载完 / 该 Wiki 已被删除）时兜底显示原始 id，不阻塞渲染（见 design.md 决策 7）；
+                // 置顶列表跨团队展示，不受 currentTeamId 筛选（见 team-switcher design.md 决策 3）
+                const name = wikis.find(w => w.id === id)?.name ?? id;
+                return (
+                  <Link
+                    key={id}
+                    to={`/wiki/${id}`}
+                    className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-sidebar-accent"
+                  >
+                    <Pin className="size-3.5" />
+                    <span className="truncate">{name}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ) : null}
+
           <div className="mt-4 flex items-center justify-between px-3">
             <span className="text-xs font-medium text-muted-foreground">Wiki</span>
             <Button
@@ -124,64 +141,21 @@ export function Sidebar() {
             全部 Wiki
           </Link>
 
-          {pinnedWikiIds.length > 0 ? (
+          {teamWikis.length > 0 ? (
             <div className="flex flex-col gap-1 pl-2">
-              {pinnedWikiIds.map(id => {
-                // 找不到（列表还没加载完 / 该 Wiki 已被删除）时兜底显示原始 id，不阻塞渲染（见 design.md 决策 7）
-                const name = wikis.find(w => w.id === id)?.name ?? id;
-                return (
-                  <Link
-                    key={id}
-                    to={`/wiki/${id}`}
-                    className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-sidebar-accent"
-                  >
-                    <Pin className="size-3.5" />
-                    <span className="truncate">{name}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          ) : null}
-
-          <div className="mt-4 flex items-center justify-between px-3">
-            <span className="text-xs font-medium text-muted-foreground">团队</span>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => setCreateTeamOpen(true)}
-              aria-label="新建团队"
-            >
-              <Plus className="size-3.5" />
-            </Button>
-          </div>
-          {visibleTeams.length > 0 ? (
-            <div className="flex flex-col gap-1">
-              {visibleTeams.map(team => (
-                <div key={team.id} className="group flex items-center gap-1 pl-1">
-                  <Link
-                    to={`/teams/${team.id}/wikis`}
-                    className="flex flex-1 items-center gap-2 truncate rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent"
-                  >
-                    <Users className="size-3.5 shrink-0" />
-                    <span className="truncate">{team.name}</span>
-                  </Link>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className="opacity-0 group-hover:opacity-100"
-                    aria-label="团队设置"
-                    onClick={() => setSettingsTeam(team)}
-                  >
-                    <Settings className="size-3.5" />
-                  </Button>
-                </div>
+              {teamWikis.map(wiki => (
+                <Link
+                  key={wiki.id}
+                  to={`/wiki/${wiki.id}`}
+                  className="flex items-center gap-2 truncate rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-sidebar-accent"
+                >
+                  <span className="truncate">{wiki.name}</span>
+                </Link>
               ))}
             </div>
           ) : (
-            <p className="px-3 text-xs text-muted-foreground">还没有团队，点 + 创建一个</p>
+            <p className="px-3 text-xs text-muted-foreground">当前团队还没有 Wiki</p>
           )}
-
-          <div className="mt-4 px-3 text-xs font-medium text-muted-foreground">我的文档</div>
         </nav>
 
         {/* 拖拽调整宽度的热区：hover 出现可拖拽光标，最小/最大宽度钳制在 store/shell.ts 里做 */}
@@ -194,14 +168,6 @@ export function Sidebar() {
 
       <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
       <CreateWikiDialog open={createWikiOpen} onOpenChange={setCreateWikiOpen} />
-      <CreateTeamDialog open={createTeamOpen} onOpenChange={setCreateTeamOpen} />
-      <TeamSettingsDialog
-        team={settingsTeam}
-        open={settingsTeam !== null}
-        onOpenChange={next => {
-          if (!next) setSettingsTeam(null);
-        }}
-      />
     </>
   );
 }

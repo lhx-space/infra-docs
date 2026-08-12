@@ -21,8 +21,7 @@ export interface WikiMember {
   role: WikiRole;
   createdAt: string;
   /** 只有 GET /wikis/:wikiId/members（用 Prisma 关联查询带出用户名）才会返回这个字段，
-   * add/updateRole/remove 几个写接口的响应体里没有——调用方需要用户名时应该用 lookupUser
-   * 拿到的结果自己拼一份本地展示对象，不要假设这个字段总是存在 */
+   * add/updateRole/remove 几个写接口的响应体里没有——不要假设这个字段总是存在 */
   user?: {id: string; username: string};
 }
 

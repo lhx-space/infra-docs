@@ -1,9 +1,10 @@
 import {Loader2} from 'lucide-react';
-import {type ChangeEvent, type SubmitEvent, useRef, useState} from 'react';
+import {type ChangeEvent, type SubmitEvent, useEffect, useRef, useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
 import {ApiError} from '@/network';
+import {useTeamStore} from '@/store/team';
 import type {Wiki} from '@/store/wiki';
 import {useWikiStore} from '@/store/wiki';
 
@@ -12,6 +13,11 @@ interface WikiBasicInfoTabProps {
   canEdit: boolean;
   canDelete: boolean;
   onDeleted: () => void;
+  /** 转移成功后关闭设置面板：`wiki` prop 是父组件挂载时的一份快照，转移会导致其
+   * `teamId` 变化，但面板不会重新拿到最新对象——不关闭的话，"转移目标团队"下拉框会
+   * 用旧的 teamId 继续排除旧团队，允许用户误把 Wiki 转移回原地。跟删除工作区的
+   * `onDeleted` 是同一个"结构性变更后强制关闭，逼用户重新打开拿新数据"的思路。 */
+  onTransferred: () => void;
 }
 
 /**
@@ -19,10 +25,19 @@ interface WikiBasicInfoTabProps {
  * canEdit 为 false（VIEWER）时所有编辑控件禁用；canDelete 为 false（EDITOR）时不展示删除区域
  * （见 spec.md「设置面板 - Basic Information 管理」，这只是体验层校验，真正边界在后端）。
  */
-export function WikiBasicInfoTab({wiki, canEdit, canDelete, onDeleted}: WikiBasicInfoTabProps) {
+export function WikiBasicInfoTab({
+  wiki,
+  canEdit,
+  canDelete,
+  onDeleted,
+  onTransferred
+}: WikiBasicInfoTabProps) {
   const updateWikiInfo = useWikiStore(state => state.updateWikiInfo);
   const deleteWiki = useWikiStore(state => state.deleteWiki);
   const uploadCoverImage = useWikiStore(state => state.uploadCoverImage);
+  const transferWikiTeam = useWikiStore(state => state.transferWikiTeam);
+  const teams = useTeamStore(state => state.teams);
+  const fetchMyTeams = useTeamStore(state => state.fetchMyTeams);
 
   const [name, setName] = useState(wiki.name);
   const [description, setDescription] = useState(wiki.description ?? '');
@@ -35,6 +50,22 @@ export function WikiBasicInfoTab({wiki, canEdit, canDelete, onDeleted}: WikiBasi
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 转移团队：目标团队候选是"我所属的、排除 Wiki 当前归属团队"的其他团队
+  const transferCandidates = teams.filter(team => team.id !== wiki.teamId);
+  const [transferTargetId, setTransferTargetId] = useState('');
+  const [confirmingTransfer, setConfirmingTransfer] = useState(false);
+  const [transferring, setTransferring] = useState(false);
+
+  useEffect(() => {
+    if (canDelete && teams.length === 0) void fetchMyTeams();
+  }, [canDelete, teams.length, fetchMyTeams]);
+
+  useEffect(() => {
+    if (!transferTargetId && transferCandidates.length > 0) {
+      setTransferTargetId(transferCandidates[0]?.id ?? '');
+    }
+  }, [transferTargetId, transferCandidates]);
 
   // canDelete 在 WikiSettingsDialog 里就是 role === 'OWNER'，跟"能开关申请加入"是同一批人，
   // 直接复用，不新增一个 canManageJoinRequest prop
@@ -92,6 +123,21 @@ export function WikiBasicInfoTab({wiki, canEdit, canDelete, onDeleted}: WikiBasi
       setConfirmingDelete(false);
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleTransfer(): Promise<void> {
+    if (!transferTargetId) return;
+    setTransferring(true);
+    setError(null);
+    try {
+      await transferWikiTeam(wiki.id, transferTargetId);
+      setConfirmingTransfer(false);
+      onTransferred();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '转移失败，请稍后重试');
+    } finally {
+      setTransferring(false);
     }
   }
 
@@ -172,6 +218,61 @@ export function WikiBasicInfoTab({wiki, canEdit, canDelete, onDeleted}: WikiBasi
             onChange={e => void handleToggleJoinRequest(e.target.checked)}
             className="size-4"
           />
+        </div>
+      ) : null}
+
+      {canDelete && transferCandidates.length > 0 ? (
+        <div className="flex flex-col gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+          <p className="text-sm font-medium text-destructive">转移归属团队</p>
+          <p className="text-xs text-muted-foreground">
+            转移后不在新团队内的原有成员将立即失去访问权限，请确认目标团队后再操作
+          </p>
+          <select
+            value={transferTargetId}
+            disabled={transferring}
+            onChange={e => setTransferTargetId(e.target.value)}
+            className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none disabled:opacity-50"
+          >
+            {transferCandidates.map(team => (
+              <option key={team.id} value={team.id}>
+                {team.isPersonal ? '个人空间' : team.name}
+              </option>
+            ))}
+          </select>
+          {confirmingTransfer ? (
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                disabled={transferring}
+                onClick={() => void handleTransfer()}
+              >
+                {transferring ? <Loader2 className="size-4 animate-spin" /> : null}
+                确认转移（原有成员将立即失去访问权限）
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={transferring}
+                onClick={() => setConfirmingTransfer(false)}
+              >
+                取消
+              </Button>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="self-start"
+              disabled={!transferTargetId}
+              onClick={() => setConfirmingTransfer(true)}
+            >
+              转移团队
+            </Button>
+          )}
         </div>
       ) : null}
 
