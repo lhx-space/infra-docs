@@ -8,6 +8,8 @@ export interface Wiki {
   description: string | null;
   coverImage: string | null;
   ownerId: string;
+  teamId: string;
+  allowJoinRequest: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -28,12 +30,18 @@ export interface CreateWikiInput {
   name: string;
   description?: string;
   coverImage?: string;
+  teamId?: string;
 }
 
 export interface UpdateWikiInfoInput {
   name?: string;
   description?: string;
   coverImage?: string;
+  allowJoinRequest?: boolean;
+}
+
+export function transferWikiTeam(wikiId: string, teamId: string): Promise<{wiki: Wiki}> {
+  return http.patch<{wiki: Wiki}>(`/wikis/${wikiId}/team`, {teamId});
 }
 
 /**

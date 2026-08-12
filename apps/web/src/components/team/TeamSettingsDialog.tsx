@@ -1,59 +1,60 @@
 import {useEffect, useState} from 'react';
 import {Dialog, DialogContent, DialogHeader, DialogTitle} from '@/components/ui/dialog';
 import {cn} from '@/lib/utils';
-import type {Wiki, WikiRole} from '@/store/wiki';
-import {useWikiStore} from '@/store/wiki';
-import {WikiBasicInfoTab} from './WikiBasicInfoTab';
-import {WikiMembersTab} from './WikiMembersTab';
+import type {Team, TeamRole} from '@/store/team';
+import {useTeamStore} from '@/store/team';
+import {TeamBasicInfoTab} from './TeamBasicInfoTab';
+import {TeamInviteTab} from './TeamInviteTab';
+import {TeamMembersTab} from './TeamMembersTab';
 
-interface WikiSettingsDialogProps {
-  wiki: Wiki | null;
+interface TeamSettingsDialogProps {
+  team: Team | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-type TabKey = 'basic' | 'members';
+type TabKey = 'basic' | 'members' | 'invite';
 
-const TABS: Array<{key: TabKey; label: string}> = [
+const ALL_TABS: Array<{key: TabKey; label: string}> = [
   {key: 'basic', label: 'Basic Information'},
-  {key: 'members', label: 'Members'}
+  {key: 'members', label: 'Members'},
+  {key: 'invite', label: 'Invite'}
 ];
 
 /**
- * 设置面板：Dialog + 两个 Tab，接收 wikiId 和当前用户角色（打开时通过 GET /wikis/:wikiId 拿角色，
- * 见 design.md 决策 8——按钮可用状态统一由角色计算，不在每个子组件里各自判断一遍）。
+ * 团队设置面板：结构对齐 `WikiSettingsDialog`（Dialog + Tab + 打开时拉一次角色）。
+ * Invite Tab 只有 `OWNER` 才展示——生成/失效邀请链接的接口本身就要求 `OWNER`。
  */
-export function WikiSettingsDialog({wiki, open, onOpenChange}: WikiSettingsDialogProps) {
-  const getWiki = useWikiStore(state => state.getWiki);
-  const [role, setRole] = useState<WikiRole | null>(null);
+export function TeamSettingsDialog({team, open, onOpenChange}: TeamSettingsDialogProps) {
+  const getTeam = useTeamStore(state => state.getTeam);
+  const [role, setRole] = useState<TeamRole | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>('basic');
 
   useEffect(() => {
-    if (!open || !wiki) {
+    if (!open || !team) {
       setRole(null);
       return;
     }
     setActiveTab('basic');
-    getWiki(wiki.id)
+    getTeam(team.id)
       .then(res => setRole(res.role))
       .catch(() => setRole(null));
-  }, [open, wiki, getWiki]);
+  }, [open, team, getTeam]);
 
-  if (!wiki) return null;
+  if (!team) return null;
 
-  const canEditBasicInfo = role === 'OWNER' || role === 'EDITOR';
-  const canManageMembers = role === 'OWNER';
-  const canDelete = role === 'OWNER';
+  const canManage = role === 'OWNER';
+  const tabs = ALL_TABS.filter(tab => tab.key !== 'invite' || canManage);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle className="truncate">{wiki.name} · 设置</DialogTitle>
+          <DialogTitle className="truncate">{team.name} · 设置</DialogTitle>
         </DialogHeader>
 
         <div className="flex gap-1 border-b">
-          {TABS.map(tab => (
+          {tabs.map(tab => (
             <button
               key={tab.key}
               type="button"
@@ -73,14 +74,16 @@ export function WikiSettingsDialog({wiki, open, onOpenChange}: WikiSettingsDialo
         {role === null ? (
           <p className="py-8 text-center text-sm text-muted-foreground">加载中...</p>
         ) : activeTab === 'basic' ? (
-          <WikiBasicInfoTab
-            wiki={wiki}
-            canEdit={canEditBasicInfo}
-            canDelete={canDelete}
+          <TeamBasicInfoTab
+            team={team}
+            canEdit={canManage}
+            canDelete={canManage}
             onDeleted={() => onOpenChange(false)}
           />
+        ) : activeTab === 'members' ? (
+          <TeamMembersTab team={team} canManage={canManage} />
         ) : (
-          <WikiMembersTab wiki={wiki} canManage={canManageMembers} currentRole={role} />
+          <TeamInviteTab team={team} />
         )}
       </DialogContent>
     </Dialog>

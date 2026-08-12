@@ -1,5 +1,5 @@
 import {ImagePlus, Loader2} from 'lucide-react';
-import {type ChangeEvent, type SubmitEvent, useRef, useState} from 'react';
+import {type ChangeEvent, type SubmitEvent, useEffect, useRef, useState} from 'react';
 import {Button} from '@/components/ui/button';
 import {
   Dialog,
@@ -12,6 +12,7 @@ import {
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
 import {ApiError} from '@/network';
+import {useTeamStore} from '@/store/team';
 import {useWikiStore} from '@/store/wiki';
 
 interface CreateWikiDialogProps {
@@ -22,22 +23,40 @@ interface CreateWikiDialogProps {
 /**
  * 名称必填、简介可选、封面图可选上传；不上传封面时不传 coverImage 字段，
  * 后端会用按名称生成的默认封面兜底，不阻塞创建流程（见 spec.md「创建工作区（含简介与封面图）」）。
+ *
+ * 归属 Team：只属于个人 Team 时自动选中、不展示选择器；属于多个 Team 时展示下拉让用户选
+ * （见 team-workspace-model spec.md「创建工作区时选择归属团队」）。
  */
 export function CreateWikiDialog({open, onOpenChange}: CreateWikiDialogProps) {
   const createWiki = useWikiStore(state => state.createWiki);
   const uploadCoverImage = useWikiStore(state => state.uploadCoverImage);
+  const teams = useTeamStore(state => state.teams);
+  const fetchMyTeams = useTeamStore(state => state.fetchMyTeams);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [teamId, setTeamId] = useState('');
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (open && teams.length === 0) void fetchMyTeams();
+  }, [open, teams.length, fetchMyTeams]);
+
+  useEffect(() => {
+    // 默认选中个人 Team；只有一个可选项时选择器不展示，但状态仍需要有值才能提交
+    if (!teamId && teams.length > 0) {
+      setTeamId(teams.find(t => t.isPersonal)?.id ?? teams[0]?.id ?? '');
+    }
+  }, [teamId, teams]);
+
   function resetForm(): void {
     setName('');
     setDescription('');
+    setTeamId('');
     setCoverFile(null);
     setCoverPreview(null);
     setError(null);
@@ -66,7 +85,8 @@ export function CreateWikiDialog({open, onOpenChange}: CreateWikiDialogProps) {
       await createWiki({
         name: name.trim(),
         description: description.trim() || undefined,
-        coverImage
+        coverImage,
+        teamId: teamId || undefined
       });
       handleOpenChange(false);
     } catch (err) {
@@ -96,6 +116,24 @@ export function CreateWikiDialog({open, onOpenChange}: CreateWikiDialogProps) {
               required
             />
           </div>
+
+          {teams.length > 1 ? (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="wiki-team">归属团队</Label>
+              <select
+                id="wiki-team"
+                value={teamId}
+                onChange={e => setTeamId(e.target.value)}
+                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm outline-none"
+              >
+                {teams.map(team => (
+                  <option key={team.id} value={team.id}>
+                    {team.isPersonal ? '个人空间' : team.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="wiki-description">简介（可选）</Label>

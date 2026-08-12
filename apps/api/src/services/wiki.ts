@@ -1,12 +1,15 @@
 import {prisma} from '../db/prisma';
 import {Prisma, type Wiki, type WikiMember, type WikiRole} from '../generated/prisma/client';
+import {findPersonalTeam} from '../models/team';
+import {findTeamMember} from '../models/team-member';
 import {findUserById} from '../models/user';
 import {
   deleteWiki as deleteWikiModel,
   findWikiById,
   listWikisByUserId,
   updateWikiInfo as updateWikiInfoModel,
-  updateWikiOwner
+  updateWikiOwner,
+  updateWikiTeam
 } from '../models/wiki';
 import {
   countOwners,
@@ -35,22 +38,65 @@ export interface CreateWikiInput {
   name: string;
   description?: string;
   coverImage?: string;
+  /** 归属的 Team；不传时默认取创建者的个人 Team（见 team-workspace-model spec.md「工作区归属团队」） */
+  teamId?: string;
 }
 
 /**
  * 创建工作区：用事务原子性地同时创建 Wiki + role: OWNER 的 WikiMember 记录，
  * 保证创建者不需要任何额外操作就获得完整权限（见 design.md 决策 1、spec.md「创建工作区」）。
- * 未传 coverImage 时用按名称生成的默认封面兜底，不阻塞创建流程。
+ * 未传 coverImage 时用按名称生成的默认封面兜底，不阻塞创建流程；显式指定 teamId 时
+ * 必须校验创建者本身是该 Team 的成员，不能凭空把 Wiki 挂到自己不属于的团队下。
  */
 export async function createWiki(userId: string, input: CreateWikiInput): Promise<Wiki> {
   const coverImage = input.coverImage ?? buildDicebearUrl('shapes', input.name);
+
+  let teamId = input.teamId;
+  if (teamId) {
+    const membership = await findTeamMember(teamId, userId);
+    if (!membership) {
+      throw new WikiError(403, 'not_team_member');
+    }
+  } else {
+    const personalTeam = await findPersonalTeam(userId);
+    if (!personalTeam) {
+      // 防御性分支：注册流程已经保证每个用户都有个人 Team，正常不会走到这里
+      throw new WikiError(500, 'personal_team_not_found');
+    }
+    teamId = personalTeam.id;
+  }
+
   return prisma.$transaction(async tx => {
     const wiki = await tx.wiki.create({
-      data: {ownerId: userId, name: input.name, description: input.description, coverImage}
+      data: {
+        ownerId: userId,
+        teamId: teamId as string,
+        name: input.name,
+        description: input.description,
+        coverImage
+      }
     });
     await tx.wikiMember.create({data: {wikiId: wiki.id, userId, role: 'OWNER'}});
     return wiki;
   });
+}
+
+/**
+ * 转移工作区归属的 Team：仅调用方需在 handler 层校验是该 Wiki 的 OWNER（复用 requireWikiRole）；
+ * 这里额外校验操作者本身是目标 Team 的成员，防止把 Wiki 转移到自己不属于的团队。转移后不在
+ * 新 Team 的原有 WikiMember 立即失效，靠权限判断的运行时计算体现，不需要主动清理记录
+ * （见 design.md 决策 1、spec.md「工作区归属团队」）。
+ */
+export async function transferWikiTeam(
+  wikiId: string,
+  newTeamId: string,
+  userId: string
+): Promise<Wiki> {
+  const membership = await findTeamMember(newTeamId, userId);
+  if (!membership) {
+    throw new WikiError(403, 'not_team_member');
+  }
+  return updateWikiTeam(wikiId, newTeamId);
 }
 
 /** 只返回当前用户是成员的工作区，按更新时间倒序（见 design.md 决策 3） */
@@ -67,6 +113,8 @@ export interface UpdateWikiInfoInput {
   name?: string;
   description?: string;
   coverImage?: string;
+  /** OWNER 显式开启才允许团队成员申请加入，见 team-workspace-model spec.md「工作区申请加入开关」 */
+  allowJoinRequest?: boolean;
 }
 
 /** 权限已由 requireWikiRole 中间件前置校验，这里是纯数据操作，不重复判断角色 */
@@ -84,10 +132,12 @@ export function listWikiMembers(wikiId: string): Promise<WikiMemberWithUser[]> {
 }
 
 /**
- * 添加成员：是否已是成员的唯一性判断完全交给数据库的 `@@unique([wikiId, userId])` 约束，
- * 不再"先查询、再写入"（那样在并发场景下有检查-执行间隙，见 wiki-workspace-fixes design.md
- * 决策 5）。命中唯一约束冲突（Prisma `P2002`）时转换成语义清晰的 `409`，其他数据库错误
- * 原样向上抛，交给上层的全局错误处理。
+ * 添加成员：目标用户必须已经是该 Wiki 所属 Team 的成员，不再支持对任意已注册用户精确
+ * 查找后直接添加（**BREAKING**，见 team-workspace-model design.md 决策 4、spec.md
+ * 「工作区成员管理」）。是否已是成员的唯一性判断完全交给数据库的 `@@unique([wikiId, userId])`
+ * 约束，不再"先查询、再写入"（那样在并发场景下有检查-执行间隙，见 wiki-workspace-fixes
+ * design.md 决策 5）。命中唯一约束冲突（Prisma `P2002`）时转换成语义清晰的 `409`，其他
+ * 数据库错误原样向上抛，交给上层的全局错误处理。
  */
 export async function addWikiMember(
   wikiId: string,
@@ -96,6 +146,17 @@ export async function addWikiMember(
 ): Promise<WikiMember> {
   const targetUser = await findUserById(targetUserId);
   if (!targetUser) {
+    throw new WikiError(404, 'user_not_found');
+  }
+
+  const wiki = await findWikiById(wikiId);
+  if (!wiki) {
+    throw new WikiError(404, 'not_found');
+  }
+
+  const teamMembership = await findTeamMember(wiki.teamId, targetUserId);
+  if (!teamMembership) {
+    // 不额外区分"用户存在但不在团队"和"用户不存在"，避免向 OWNER 泄露该用户是否真实存在
     throw new WikiError(404, 'user_not_found');
   }
 
@@ -178,4 +239,25 @@ export async function removeWikiMember(wikiId: string, targetUserId: string): Pr
     await syncWikiOwnerIfNeeded(tx, wikiId, targetUserId);
     return removed;
   });
+}
+
+/**
+ * 团队成员退出/被移除时，若其是某个 Wiki 唯一显式的 `OWNER`，由调用方（services/team.ts）
+ * 在同一事务内把该 Wiki 的 `OWNER` 转移给指定的接收人（当前 Team 中最早加入且仍持有 `OWNER`
+ * 的成员）；这里只负责"确保 toUserId 拥有一条 OWNER 的 WikiMember 记录 + 同步 ownerId"，
+ * 不负责删除原 OWNER 的记录——那一步由调用方跟"清理该用户在整个 Team 下所有 WikiMember"
+ * 的批量操作一起做（见 team-workspace-model design.md 决策 7）。
+ */
+export async function transferSoleWikiOwnership(
+  tx: Prisma.TransactionClient,
+  wikiId: string,
+  toUserId: string
+): Promise<void> {
+  const existing = await findWikiMember(wikiId, toUserId, tx);
+  if (existing) {
+    await updateWikiMemberRoleModel(wikiId, toUserId, 'OWNER', tx);
+  } else {
+    await createWikiMember(wikiId, toUserId, 'OWNER', tx);
+  }
+  await updateWikiOwner(wikiId, toUserId, tx);
 }

@@ -65,7 +65,12 @@ async function issueTokens(userId: string): Promise<AuthTokens> {
   return {accessToken, refreshToken, refreshTokenTtlSeconds};
 }
 
-/** 注册：用事务原子性地同时创建 User + 带默认头像的 UserProfile（同 wiki.createWiki 的写法风格） */
+/**
+ * 注册：用事务原子性地同时创建 User + 带默认头像的 UserProfile + 一个"个人 Team"
+ * （isPersonal: true，该用户 OWNER）。个人 Team 是用户唯一的组织归属容器，不需要
+ * 任何额外操作即可拥有——个人即团队，没有"个人模式/团队模式"两套逻辑（见
+ * team-workspace-model design.md 决策 1、spec.md「注册时自动创建个人 Team」）。
+ */
 export async function register(input: RegisterInput): Promise<PublicUser> {
   const [existingByEmail, existingByUsername] = await Promise.all([
     findUserByEmail(input.email),
@@ -83,6 +88,8 @@ export async function register(input: RegisterInput): Promise<PublicUser> {
     await tx.userProfile.create({
       data: {userId: created.id, avatarUrl: buildDefaultAvatarUrl(input.username)}
     });
+    const team = await tx.team.create({data: {name: '我的空间', isPersonal: true}});
+    await tx.teamMember.create({data: {teamId: team.id, userId: created.id, role: 'OWNER'}});
     return created;
   });
   return toPublicUser(user);

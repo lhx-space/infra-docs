@@ -15,9 +15,10 @@ export interface WikiMemberWithUser extends WikiMember {
 export function createWikiMember(
   wikiId: string,
   userId: string,
-  role: WikiRole
+  role: WikiRole,
+  client: Client = prisma
 ): Promise<WikiMember> {
-  return prisma.wikiMember.create({data: {wikiId, userId, role}});
+  return client.wikiMember.create({data: {wikiId, userId, role}});
 }
 
 export function findWikiMember(
@@ -74,4 +75,25 @@ export function deleteWikiMember(
   client: Client = prisma
 ): Promise<WikiMember> {
   return client.wikiMember.delete({where: {wikiId_userId: {wikiId, userId}}});
+}
+
+/**
+ * 找出某用户在某 Team 下所有 Wiki 里的成员记录，用于退出团队时判断"哪些 Wiki 需要转移所有权"
+ * （见 team-workspace-model design.md 决策 7）。
+ */
+export function listWikiMembershipsInTeam(
+  teamId: string,
+  userId: string,
+  client: Client = prisma
+): Promise<WikiMember[]> {
+  return client.wikiMember.findMany({where: {userId, wiki: {teamId}}});
+}
+
+/** 批量删除某用户在某 Team 下所有 Wiki 里的成员记录，跟所有权转移在同一个事务内调用 */
+export function deleteWikiMembershipsInTeam(
+  teamId: string,
+  userId: string,
+  client: Client = prisma
+): Promise<{count: number}> {
+  return client.wikiMember.deleteMany({where: {userId, wiki: {teamId}}});
 }

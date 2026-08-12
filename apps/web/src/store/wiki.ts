@@ -10,9 +10,21 @@ import type {
   WikiRole
 } from '@/services/wiki';
 import * as wikiService from '@/services/wiki';
+import type {WikiJoinRequest} from '@/services/wiki-join-request';
+import * as joinRequestService from '@/services/wiki-join-request';
+import type {WikiShareLink} from '@/services/wiki-share-link';
+import * as shareLinkService from '@/services/wiki-share-link';
 import {usePinnedStore} from './pinned';
 
-export type {CreateWikiInput, UpdateWikiInfoInput, Wiki, WikiMember, WikiRole};
+export type {
+  CreateWikiInput,
+  UpdateWikiInfoInput,
+  Wiki,
+  WikiJoinRequest,
+  WikiMember,
+  WikiRole,
+  WikiShareLink
+};
 
 interface WikiState {
   wikis: Wiki[];
@@ -33,6 +45,20 @@ interface WikiState {
   removeMember: (wikiId: string, userId: string) => Promise<void>;
   lookupUser: (identifier: string) => Promise<LookupUserResult>;
   uploadCoverImage: (file: File) => Promise<string>;
+  transferWikiTeam: (wikiId: string, teamId: string) => Promise<Wiki>;
+
+  createShareLink: (wikiId: string, role: WikiRole, expiresAt?: string) => Promise<WikiShareLink>;
+  revokeShareLink: (wikiId: string, linkId: string) => Promise<void>;
+  redeemShareLink: (token: string) => Promise<string>;
+
+  createJoinRequest: (wikiId: string) => Promise<WikiJoinRequest>;
+  listPendingJoinRequests: (wikiId: string) => Promise<WikiJoinRequest[]>;
+  reviewJoinRequest: (
+    wikiId: string,
+    requestId: string,
+    approve: boolean,
+    role?: WikiRole
+  ) => Promise<void>;
 }
 
 /**
@@ -99,6 +125,40 @@ export const useWikiStore = create<WikiState>(set => ({
   uploadCoverImage: async file => {
     const {url} = await uploadService.uploadImage(file);
     return url;
+  },
+
+  transferWikiTeam: async (wikiId, teamId) => {
+    const {wiki} = await wikiService.transferWikiTeam(wikiId, teamId);
+    set(state => ({wikis: state.wikis.map(w => (w.id === wikiId ? wiki : w))}));
+    return wiki;
+  },
+
+  createShareLink: async (wikiId, role, expiresAt) => {
+    const {link} = await shareLinkService.createShareLink(wikiId, role, expiresAt);
+    return link;
+  },
+
+  revokeShareLink: async (wikiId, linkId) => {
+    await shareLinkService.revokeShareLink(wikiId, linkId);
+  },
+
+  redeemShareLink: async token => {
+    const {wikiId} = await shareLinkService.redeemShareLink(token);
+    return wikiId;
+  },
+
+  createJoinRequest: async wikiId => {
+    const {request} = await joinRequestService.createJoinRequest(wikiId);
+    return request;
+  },
+
+  listPendingJoinRequests: async wikiId => {
+    const {requests} = await joinRequestService.listPendingJoinRequests(wikiId);
+    return requests;
+  },
+
+  reviewJoinRequest: async (wikiId, requestId, approve, role) => {
+    await joinRequestService.reviewJoinRequest(wikiId, requestId, approve, role);
   }
 }));
 

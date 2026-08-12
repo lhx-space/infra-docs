@@ -49,6 +49,21 @@ export const routes: AppRouteConfig[] = [
         path: '/wiki/:wikiId',
         component: () => import('@/pages/wiki/WikiDetail'),
         meta: {title: 'Wiki 详情'}
+      },
+      {
+        path: '/teams/:teamId/wikis',
+        component: () => import('@/pages/team/TeamWikiDirectory'),
+        meta: {title: '团队工作区'}
+      },
+      {
+        path: '/invites/:token',
+        component: () => import('@/pages/InviteRedeem'),
+        meta: {title: '加入团队'}
+      },
+      {
+        path: '/share-links/:token',
+        component: () => import('@/pages/ShareLinkRedeem'),
+        meta: {title: '加入工作区'}
       }
     ]
   }

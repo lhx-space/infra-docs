@@ -7,13 +7,19 @@ import {isValidUuid} from '../utils/uuid';
 const createWikiSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
-  coverImage: z.string().url().optional()
+  coverImage: z.string().url().optional(),
+  teamId: z.string().uuid().optional()
+});
+
+const transferWikiTeamSchema = z.object({
+  teamId: z.string().uuid()
 });
 
 const updateWikiInfoSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().max(500).optional(),
-  coverImage: z.string().url().optional()
+  coverImage: z.string().url().optional(),
+  allowJoinRequest: z.boolean().optional()
 });
 
 const addMemberSchema = z.object({
@@ -87,8 +93,44 @@ export async function updateWikiInfoHandler(
     return;
   }
 
+  // allowJoinRequest 仅 OWNER 能读写；这个路由的最低权限是 EDITOR（改名称/简介/封面），
+  // 所以这一个字段需要单独在 handler 层加一道更严格的校验，不影响其他字段
+  if (parsed.data.allowJoinRequest !== undefined && req.wikiRole !== 'OWNER') {
+    res.status(403).json({error: 'forbidden'});
+    return;
+  }
+
   try {
     const wiki = await wikiService.updateWikiInfo(req.params['wikiId'] as string, parsed.data);
+    res.json({wiki});
+  } catch (err) {
+    respondToServiceError(err, res, next);
+  }
+}
+
+export async function transferWikiTeamHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const userId = req.user?.id;
+  if (userId === undefined) {
+    res.status(401).json({error: 'unauthorized'});
+    return;
+  }
+
+  const parsed = transferWikiTeamSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({error: 'invalid_input', details: parsed.error.flatten()});
+    return;
+  }
+
+  try {
+    const wiki = await wikiService.transferWikiTeam(
+      req.params['wikiId'] as string,
+      parsed.data.teamId,
+      userId
+    );
     res.json({wiki});
   } catch (err) {
     respondToServiceError(err, res, next);

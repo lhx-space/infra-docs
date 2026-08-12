@@ -28,11 +28,30 @@ export function WikiBasicInfoTab({wiki, canEdit, canDelete, onDeleted}: WikiBasi
   const [description, setDescription] = useState(wiki.description ?? '');
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(wiki.coverImage);
+  const [allowJoinRequest, setAllowJoinRequest] = useState(wiki.allowJoinRequest);
+  const [joinRequestSaving, setJoinRequestSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // canDelete 在 WikiSettingsDialog 里就是 role === 'OWNER'，跟"能开关申请加入"是同一批人，
+  // 直接复用，不新增一个 canManageJoinRequest prop
+  const canToggleJoinRequest = canDelete;
+
+  async function handleToggleJoinRequest(next: boolean): Promise<void> {
+    setJoinRequestSaving(true);
+    setError(null);
+    try {
+      await updateWikiInfo(wiki.id, {allowJoinRequest: next});
+      setAllowJoinRequest(next);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '保存失败，请稍后重试');
+    } finally {
+      setJoinRequestSaving(false);
+    }
+  }
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>): void {
     const file = e.target.files?.[0];
@@ -137,6 +156,24 @@ export function WikiBasicInfoTab({wiki, canEdit, canDelete, onDeleted}: WikiBasi
           </Button>
         ) : null}
       </form>
+
+      {canToggleJoinRequest ? (
+        <div className="flex items-center justify-between gap-2 rounded-md border p-3">
+          <div>
+            <p className="text-sm font-medium">允许团队成员申请加入</p>
+            <p className="text-xs text-muted-foreground">
+              开启后，同团队的成员能在团队工作区目录里看到并申请加入这个 Wiki
+            </p>
+          </div>
+          <input
+            type="checkbox"
+            checked={allowJoinRequest}
+            disabled={joinRequestSaving}
+            onChange={e => void handleToggleJoinRequest(e.target.checked)}
+            className="size-4"
+          />
+        </div>
+      ) : null}
 
       {canDelete ? (
         <div className="mt-2 flex flex-col gap-2 rounded-md border border-destructive/30 bg-destructive/5 p-3">

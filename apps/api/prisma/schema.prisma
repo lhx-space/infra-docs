@@ -25,10 +25,13 @@ model User {
 
   profile UserProfile?
 
-  // 反向关系：Prisma 要求关系的两端都声明字段；这两个字段本身不会被业务代码直接使用，
-  // 实际查询走 models/wiki.ts / models/wiki-member.ts 里对 Wiki/WikiMember 的显式查询
-  ownedWikis      Wiki[]
-  wikiMemberships WikiMember[]
+  // 反向关系：Prisma 要求关系的两端都声明字段；这些字段本身不会被业务代码直接使用，
+  // 实际查询走对应 models/*.ts 里的显式查询
+  ownedWikis        Wiki[]
+  wikiMemberships   WikiMember[]
+  teamMemberships   TeamMember[]
+  inviteRedemptions TeamInviteRedemption[]
+  wikiJoinRequests  WikiJoinRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -68,6 +71,8 @@ enum Gender {
 }
 
 // 工作区：ownerId 只记录创建者展示用，真正的权限判断统一走 WikiMember 表
+// （teamId 归属见 team-workspace-model design.md 决策 3：Team 的 OWNER 对该 Team 下所有
+// Wiki 的默认权限走运行时计算，不在这张表里落任何"团队所有权"相关的字段）
 model Wiki {
   id          String  @id @default(uuid(7)) @db.Uuid
   name        String
@@ -77,7 +82,16 @@ model Wiki {
   ownerId     String  @db.Uuid
   owner       User    @relation(fields: [ownerId], references: [id])
 
-  members WikiMember[]
+  // 回填脚本已跑过（scripts/backfill-team-workspace.ts），存量数据已补齐，改为必填
+  teamId String @db.Uuid
+  team   Team   @relation(fields: [teamId], references: [id])
+
+  // OWNER 显式开启才允许团队成员申请加入，默认 false 保证现有 Wiki 无损升级
+  allowJoinRequest Boolean @default(false)
+
+  members      WikiMember[]
+  shareLinks   WikiShareLink[]
+  joinRequests WikiJoinRequest[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -105,4 +119,123 @@ model WikiMember {
 
   @@unique([wikiId, userId])
   @@map("wiki_members")
+}
+
+enum TeamRole {
+  OWNER
+  MEMBER
+}
+
+// 团队（租户）：注册时自动创建的"个人 Team"（isPersonal: true）与用户主动创建的多人 Team
+// 是同一张表、同一套模型，不做"个人模式/团队模式"两套逻辑（见 design.md 决策 1）。
+// 没有 ownerId 这种展示用的冗余字段——Team 的所有权完全通过 TeamMember.role 判断，
+// 不重复 Wiki.ownerId 那种需要额外同步的设计。
+model Team {
+  id         String  @id @default(uuid(7)) @db.Uuid
+  name       String
+  isPersonal Boolean @default(false)
+
+  members TeamMember[]
+  wikis   Wiki[]
+  invites TeamInvite[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("teams")
+}
+
+// 团队成员关系表：只设 OWNER/MEMBER 两级角色（见 design.md 决策 2）
+model TeamMember {
+  id     String   @id @default(uuid(7)) @db.Uuid
+  teamId String   @db.Uuid
+  userId String   @db.Uuid
+  role   TeamRole
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+// 团队邀请链接：加入 Team 的唯一途径，不支持精确查找拉人（见 design.md 决策 5）。
+// role 固定 MEMBER（服务层强制，不接受生成 OWNER 邀请）；maxUses 为空表示不限次数。
+model TeamInvite {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  teamId    String    @db.Uuid
+  token     String    @unique
+  role      TeamRole  @default(MEMBER)
+  maxUses   Int?
+  expiresAt DateTime?
+  revokedAt DateTime?
+  createdBy String    @db.Uuid
+
+  team        Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  redemptions TeamInviteRedemption[]
+
+  createdAt DateTime @default(now())
+
+  @@map("team_invites")
+}
+
+// 邀请链接的独立使用记录表：支撑"可重复使用的链接" + "同一人重复兑换幂等"，
+// 不能只在 TeamInvite 上塞一个 usedBy 字段（那样只够记一次，见 design.md 决策 5）
+model TeamInviteRedemption {
+  id       String @id @default(uuid(7)) @db.Uuid
+  inviteId String @db.Uuid
+  userId   String @db.Uuid
+
+  invite TeamInvite @relation(fields: [inviteId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  usedAt DateTime @default(now())
+
+  @@unique([inviteId, userId])
+  @@map("team_invite_redemptions")
+}
+
+// 工作区分享链接：分享者只能生成一个不超过自己当前角色的链接（服务层校验，这里只存最终值），
+// 且只对同 Team 成员生效（见 design.md 决策 8）
+model WikiShareLink {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  wikiId    String    @db.Uuid
+  token     String    @unique
+  role      WikiRole
+  expiresAt DateTime?
+  revokedAt DateTime?
+  createdBy String    @db.Uuid
+
+  wiki Wiki @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@map("wiki_share_links")
+}
+
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// 每个用户对每个 Wiki 只保留一条记录，被拒绝后再申请是更新同一行的 status，
+// 不追加历史行——方便直接用 reviewedAt 计算冷却时间（见 design.md 决策 9）
+model WikiJoinRequest {
+  id         String            @id @default(uuid(7)) @db.Uuid
+  wikiId     String            @db.Uuid
+  userId     String            @db.Uuid
+  status     JoinRequestStatus @default(PENDING)
+  reviewedBy String?           @db.Uuid
+  reviewedAt DateTime?
+
+  wiki Wiki @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([wikiId, userId])
+  @@map("wiki_join_requests")
 }

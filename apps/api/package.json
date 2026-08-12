@@ -13,7 +13,8 @@
     "validate:prisma": "npx prisma validate",
     "generate:prisma": "npx prisma generate",
     "migrate:prisma": "npx prisma migrate dev",
-    "migrate:deploy:prisma": "npx prisma migrate deploy"
+    "migrate:deploy:prisma": "npx prisma migrate deploy",
+    "backfill:team-workspace": "tsx --env-file=.env scripts/backfill-team-workspace.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
