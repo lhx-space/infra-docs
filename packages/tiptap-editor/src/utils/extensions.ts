@@ -5,10 +5,10 @@ import {Placeholder} from '@tiptap/extension-placeholder';
 import {TaskItem} from '@tiptap/extension-task-item';
 import {TaskList} from '@tiptap/extension-task-list';
 import {StarterKit} from '@tiptap/starter-kit';
-import {LinkPreviewCard} from './link-preview-node';
-import {documentLowlight} from './lowlight';
-import {MermaidBlock} from './mermaid-node';
-import {VideoBlock} from './video-node';
+import {documentLowlight} from './code-block/lowlight';
+import {LinkPreviewCard} from './link-preview/link-preview-node';
+import {MermaidBlock} from './mermaid/mermaid-node';
+import {VideoBlock} from './video/video-node';
 
 /**
  * 文档编辑器支持的块类型范围（见 document-editor spec.md「编辑器支持的块类型范围」）：

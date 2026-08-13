@@ -1,0 +1,93 @@
+/**
+ * 图片样式：限宽展示、选中态反馈、双击全屏预览遮罩、上传中占位。
+ * 从 index.css 拆分而来（见 tiptap-editor-file-organization design.md 决策 2），
+ * 选择器与规则内容逐字未变，只是物理位置搬到独立文件。
+ *
+ * `@keyframes doc-editor-spin` 被这里的上传占位和 video.css 的缓冲/转码占位共同引用，
+ * 属于跨领域共享的动画定义，保留在入口 index.css，不在这里重复定义（见 design.md 决策 2）。
+ */
+
+/* 图片：限宽 + 懒加载已在标签属性层处理，这里只负责视觉展示。单击是 ProseMirror 原生的
+   节点选中（见下面 `.ProseMirror-selectednode`），双击才弹出全屏预览——跟单击选中/
+   双击预览两个操作分开，不冲突（见 document-editor spec.md「图片双击预览」） */
+.doc-editor-image {
+  max-width: 100%;
+  border-radius: var(--doc-editor-radius);
+  display: block;
+  margin: 0.5em 0;
+  cursor: pointer;
+}
+
+/* 图片被 ProseMirror 选中时的视觉反馈——原来完全没有任何样式，选中后在视图上根本看不出来 */
+.ProseMirror-selectednode.doc-editor-image {
+  outline: 2px solid var(--doc-editor-accent);
+  outline-offset: 2px;
+}
+
+/* 双击图片/Mermaid 图表后的全屏预览遮罩（见 document-editor spec.md「图片/图表双击预览」），
+   两者共用同一套遮罩样式，内部内容（img 或 svg）各自限宽限高 */
+.doc-editor-image-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 80%);
+  cursor: zoom-out;
+}
+
+.doc-editor-image-preview img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 4px;
+  cursor: default;
+}
+
+.doc-editor-image-preview .doc-editor-mermaid-preview {
+  background: var(--doc-editor-bg);
+  border-radius: var(--doc-editor-radius);
+  padding: 24px;
+  cursor: default;
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.doc-editor-image-preview .doc-editor-mermaid-preview svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 手势缩放容器（见 components/ZoomableMedia.tsx）：`touch-action: none` 是必须的——
+   不加的话触屏上的双指缩放/单指拖动会被浏览器当成"整页缩放/滚动"抢走，我们自己的
+   pointer/touch 事件处理函数根本收不到手势。`transform-origin: center` 保证缩放是围绕
+   画面中心放大，不是围绕左上角跑偏。 */
+.doc-editor-zoomable {
+  display: inline-flex;
+  touch-action: none;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.doc-editor-image-uploading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px dashed var(--doc-editor-border);
+  border-radius: var(--doc-editor-radius);
+  color: var(--doc-editor-fg-muted);
+  font-size: 13px;
+}
+
+.doc-editor-image-uploading::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--doc-editor-border);
+  border-top-color: var(--doc-editor-accent);
+  animation: doc-editor-spin 0.8s linear infinite;
+}

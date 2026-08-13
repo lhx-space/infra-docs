@@ -1,0 +1,120 @@
+/**
+ * 链接预览样式：正文内的预览卡片展示，以及粘贴链接时"纯文本/预览卡片"选择提示。
+ * 从 index.css 拆分而来（见 tiptap-editor-file-organization design.md 决策 2），
+ * 选择器与规则内容逐字未变，只是物理位置搬到独立文件。
+ */
+
+/* ---- 链接预览卡片 ---- */
+
+/* 选择器写成 `a.doc-editor-link-card` 而不是单独的 `.doc-editor-link-card`：这张卡片本身
+   就是一个 `<a>`，需要覆盖掉入口文件里 `.ProseMirror a { text-decoration: underline; }` 的
+   下划线——`.ProseMirror a` 是"类+元素"的组合选择器，特异度 (0,1,1)，比单独的类选择器
+   (0,1,0) 更高，之前只能靠 `!important` 强行盖过去。这里把选择器也写成"元素+类"的组合，
+   特异度同样是 (0,1,1)，跟 `.ProseMirror a` 打平后由 `@import` 引入顺序（本文件排在
+   index.css 主体规则之后生效）决定胜负，不需要 `!important` 就能生效——`!important`
+   会整体打乱级联优先级，后面任何想再覆盖它的规则都得跟着用 `!important`，滚雪球式蔓延。 */
+a.doc-editor-link-card {
+  display: flex;
+  gap: 12px;
+  margin: 0.8em 0;
+  padding: 10px;
+  border: 1px solid var(--doc-editor-border);
+  border-radius: var(--doc-editor-radius);
+  text-decoration: none;
+  color: var(--doc-editor-fg);
+}
+
+.doc-editor-link-card:hover {
+  background: var(--doc-editor-surface);
+}
+
+.doc-editor-link-card__image {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.doc-editor-link-card__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.doc-editor-link-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-editor-link-card__description {
+  font-size: 12px;
+  color: var(--doc-editor-fg-muted);
+  margin: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.doc-editor-link-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--doc-editor-fg-muted);
+}
+
+.doc-editor-link-card__favicon {
+  width: 14px;
+  height: 14px;
+}
+
+.doc-editor-link-card__url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- 粘贴链接选择提示 ---- */
+.doc-editor-link-chooser {
+  background: var(--doc-editor-bg);
+  border: 1px solid var(--doc-editor-border);
+  border-radius: var(--doc-editor-radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
+  padding: 10px;
+  min-width: 260px;
+}
+
+.doc-editor-link-chooser__url {
+  font-size: 12px;
+  color: var(--doc-editor-fg-muted);
+  margin: 0 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doc-editor-link-chooser__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.doc-editor-link-chooser__actions button {
+  flex: 1;
+  border: 1px solid var(--doc-editor-border);
+  background: transparent;
+  color: var(--doc-editor-fg);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.doc-editor-link-chooser__actions button:hover {
+  background: var(--doc-editor-surface);
+}

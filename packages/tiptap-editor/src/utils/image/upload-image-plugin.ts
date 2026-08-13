@@ -2,9 +2,9 @@ import type {EditorState} from '@tiptap/pm/state';
 import {Plugin, PluginKey} from '@tiptap/pm/state';
 import type {EditorView} from '@tiptap/pm/view';
 import {Decoration, DecorationSet} from '@tiptap/pm/view';
+import {beginPendingUpload, endPendingUpload} from '../shared/pending-upload-registry';
 import {getActiveImageUploadErrorHandler} from './image-upload-error-registry';
 import {getActiveImageUploader} from './image-uploader-registry';
-import {beginPendingUpload, endPendingUpload} from './pending-upload-registry';
 
 /**
  * 图片上传的"加载占位"实现：用 ProseMirror 的 Decoration（纯展示层，不写入文档内容）

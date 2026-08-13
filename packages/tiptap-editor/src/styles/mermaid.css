@@ -1,0 +1,101 @@
+/**
+ * Mermaid 图表块样式：编辑态/展示态切换、双栏编辑预览布局。
+ * 从 index.css 拆分而来（见 tiptap-editor-file-organization design.md 决策 2），
+ * 选择器与规则内容逐字未变，只是物理位置搬到独立文件。
+ */
+
+/* ---- Mermaid ---- */
+.doc-editor-mermaid {
+  margin: 0.8em 0;
+  border: 1px solid var(--doc-editor-border);
+  border-radius: var(--doc-editor-radius);
+  padding: 12px;
+}
+
+.doc-editor-mermaid--display {
+  position: relative;
+  cursor: pointer;
+  text-align: center;
+}
+
+.doc-editor-mermaid__edit-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  opacity: 0;
+  border: 1px solid var(--doc-editor-border);
+  background: var(--doc-editor-bg);
+  color: var(--doc-editor-fg-muted);
+  border-radius: var(--doc-editor-radius);
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.doc-editor-mermaid--display:hover .doc-editor-mermaid__edit-btn {
+  opacity: 1;
+}
+
+.doc-editor-mermaid__edit-btn:hover {
+  background: var(--doc-editor-surface);
+  color: var(--doc-editor-fg);
+}
+
+/* biome-ignore lint/style/noDescendingSpecificity: 跟 image.css 里「图片/图表双击预览」遮罩
+   的 `.doc-editor-image-preview .doc-editor-mermaid-preview svg`（特异度更高）作用在完全不同的
+   DOM 子树上——那条管的是全屏预览弹窗里的 svg，这条管的是正文内嵌 Mermaid 块自身的 svg，
+   两者不会同时匹配同一个元素，不存在互相覆盖的风险 */
+.doc-editor-mermaid__preview svg {
+  max-width: 100%;
+}
+
+.doc-editor-mermaid__placeholder {
+  color: var(--doc-editor-fg-muted);
+  font-size: 13px;
+}
+
+.doc-editor-mermaid__pane {
+  display: flex;
+  gap: 12px;
+}
+
+.doc-editor-mermaid__source {
+  flex: 1;
+  min-height: 140px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  padding: 8px;
+  border: 1px solid var(--doc-editor-border);
+  border-radius: var(--doc-editor-radius);
+  background: var(--doc-editor-code-bg);
+  color: var(--doc-editor-fg);
+  resize: vertical;
+}
+
+.doc-editor-mermaid__preview-pane {
+  flex: 1;
+  min-height: 140px;
+  overflow: auto;
+}
+
+.doc-editor-mermaid__error {
+  color: var(--doc-editor-danger);
+  font-size: 12px;
+}
+
+.doc-editor-mermaid__actions {
+  margin-top: 8px;
+  text-align: right;
+}
+
+.doc-editor-mermaid__actions button {
+  border: 1px solid var(--doc-editor-accent);
+  background: var(--doc-editor-accent);
+  color: var(--doc-editor-accent-fg);
+  border-radius: var(--doc-editor-radius);
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}

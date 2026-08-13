@@ -1,6 +1,6 @@
 import {type NodeViewProps, NodeViewWrapper} from '@tiptap/react';
 import {useEffect, useRef, useState} from 'react';
-import {getActiveVideoStatusPoller} from '../utils/video-status-registry';
+import {getActiveVideoStatusPoller} from '../utils/video/video-status-registry';
 
 /** 轮询间隔：转码通常是秒级到分钟级，这个量级下体验完全可接受（见 design.md 决策 3） */
 const POLL_INTERVAL_MS = 3000;

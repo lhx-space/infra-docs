@@ -1,0 +1,101 @@
+/**
+ * 代码块样式：折叠/复制头部、语言标签、浅色/深色两套语法高亮配色（近似 github-light/dark）。
+ * 从 index.css 拆分而来（见 tiptap-editor-file-organization design.md 决策 2），
+ * 选择器与规则内容逐字未变，只是物理位置搬到独立文件。
+ */
+
+/* ---- 代码块 ---- */
+.doc-editor-code-block {
+  margin: 0.8em 0;
+  border: 1px solid var(--doc-editor-border);
+  border-radius: var(--doc-editor-radius);
+  overflow: hidden;
+}
+
+.doc-editor-code-block__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--doc-editor-surface);
+  border-bottom: 1px solid var(--doc-editor-border);
+  font-size: 12px;
+  color: var(--doc-editor-fg-muted);
+}
+
+.doc-editor-code-block__collapse,
+.doc-editor-code-block__copy {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.doc-editor-code-block__language {
+  flex: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.doc-editor-code-block__content {
+  margin: 0;
+  padding: 12px;
+  background: var(--doc-editor-code-bg);
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+/* 语法高亮：浅色主题（近似 github-light） */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal {
+  color: #cf222e;
+}
+
+.hljs-string,
+.hljs-attr {
+  color: #0a3069;
+}
+
+.hljs-comment {
+  color: #6e7781;
+  font-style: italic;
+}
+
+.hljs-title,
+.hljs-name,
+.hljs-function {
+  color: #8250df;
+}
+
+.hljs-number {
+  color: #0550ae;
+}
+
+/* 语法高亮：深色主题（近似 github-dark），跟随 .dark 切换 */
+.dark .hljs-keyword,
+.dark .hljs-selector-tag,
+.dark .hljs-literal {
+  color: #ff7b72;
+}
+
+.dark .hljs-string,
+.dark .hljs-attr {
+  color: #a5d6ff;
+}
+
+.dark .hljs-comment {
+  color: #8b949e;
+}
+
+.dark .hljs-title,
+.dark .hljs-name,
+.dark .hljs-function {
+  color: #d2a8ff;
+}
+
+.dark .hljs-number {
+  color: #79c0ff;
+}

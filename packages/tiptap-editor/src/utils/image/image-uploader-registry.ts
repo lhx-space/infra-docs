@@ -1,4 +1,4 @@
-import {beginPendingUpload, endPendingUpload} from './pending-upload-registry';
+import {beginPendingUpload, endPendingUpload} from '../shared/pending-upload-registry';
 
 /**
  * 全包共享的"当前图片上传实现"注册表：斜杠命令的"图片"候选项、粘贴/拖拽处理都需要调用

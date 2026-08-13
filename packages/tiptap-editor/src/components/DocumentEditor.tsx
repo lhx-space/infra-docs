@@ -2,19 +2,31 @@ import {Extension} from '@tiptap/core';
 import {EditorContent, ReactNodeViewRenderer, useEditor} from '@tiptap/react';
 import type {KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent} from 'react';
 import {useEffect, useMemo, useRef, useState} from 'react';
-import {CodeBlockKeymap} from '../utils/code-block-keymap';
+import {CodeBlockKeymap} from '../utils/code-block/code-block-keymap';
 import {documentEditorExtensions} from '../utils/extensions';
-import {setActiveImageUploadErrorHandler} from '../utils/image-upload-error-registry';
-import {setActiveImageUploader} from '../utils/image-uploader-registry';
-import {LinkPreviewPaste} from '../utils/link-preview-extension';
-import {type LinkPreviewResult, setActiveLinkPreviewFetcher} from '../utils/link-preview-registry';
-import {getPendingUploadCount, subscribePendingUploadCount} from '../utils/pending-upload-registry';
+import {setActiveImageUploadErrorHandler} from '../utils/image/image-upload-error-registry';
+import {setActiveImageUploader} from '../utils/image/image-uploader-registry';
+import {imageUploadPlugin} from '../utils/image/upload-image-plugin';
+import {LinkPreviewPaste} from '../utils/link-preview/link-preview-extension';
+import {
+  type LinkPreviewResult,
+  setActiveLinkPreviewFetcher
+} from '../utils/link-preview/link-preview-registry';
+import {
+  getPendingUploadCount,
+  subscribePendingUploadCount
+} from '../utils/shared/pending-upload-registry';
 import {SlashCommand} from '../utils/slash-command';
-import {imageUploadPlugin} from '../utils/upload-image-plugin';
-import {VideoPastePattern} from '../utils/video-paste-extension';
-import {setActiveVideoStatusPoller, type VideoStatusResult} from '../utils/video-status-registry';
-import {setActiveVideoUploadErrorHandler} from '../utils/video-upload-error-registry';
-import {setActiveVideoUploader, type VideoUploadResult} from '../utils/video-uploader-registry';
+import {VideoPastePattern} from '../utils/video/video-paste-extension';
+import {
+  setActiveVideoStatusPoller,
+  type VideoStatusResult
+} from '../utils/video/video-status-registry';
+import {setActiveVideoUploadErrorHandler} from '../utils/video/video-upload-error-registry';
+import {
+  setActiveVideoUploader,
+  type VideoUploadResult
+} from '../utils/video/video-uploader-registry';
 import {CodeBlockView} from './CodeBlockView';
 import {DocumentOutline} from './DocumentOutline';
 import {FormattingBubbleMenu} from './FormattingBubbleMenu';

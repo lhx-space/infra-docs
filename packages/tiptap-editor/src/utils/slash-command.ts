@@ -3,10 +3,14 @@ import {Extension} from '@tiptap/core';
 import {ReactRenderer} from '@tiptap/react';
 import Suggestion, {type SuggestionOptions} from '@tiptap/suggestion';
 import {SlashCommandMenu, type SlashCommandMenuHandle} from '../components/SlashCommandMenu';
-import {getActiveImageUploader} from './image-uploader-registry';
-import {startImageUpload} from './upload-image-plugin';
-import {getActiveVideoUploadErrorHandler} from './video-upload-error-registry';
-import {beginVideoUpload, endVideoUpload, getActiveVideoUploader} from './video-uploader-registry';
+import {getActiveImageUploader} from './image/image-uploader-registry';
+import {startImageUpload} from './image/upload-image-plugin';
+import {getActiveVideoUploadErrorHandler} from './video/video-upload-error-registry';
+import {
+  beginVideoUpload,
+  endVideoUpload,
+  getActiveVideoUploader
+} from './video/video-uploader-registry';
 
 export interface SlashCommandItem {
   title: string;

@@ -2,7 +2,7 @@ import type {Editor} from '@tiptap/core';
 import {Extension} from '@tiptap/core';
 import {Plugin} from '@tiptap/pm/state';
 import {ReactRenderer} from '@tiptap/react';
-import {LinkPasteChooser} from '../components/LinkPasteChooser';
+import {LinkPasteChooser} from '../../components/LinkPasteChooser';
 import {getActiveLinkPreviewFetcher} from './link-preview-registry';
 
 const URL_ONLY_PATTERN = /^https?:\/\/\S+$/i;

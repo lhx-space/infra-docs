@@ -1,4 +1,4 @@
-import {beginPendingUpload, endPendingUpload} from './pending-upload-registry';
+import {beginPendingUpload, endPendingUpload} from '../shared/pending-upload-registry';
 
 export interface VideoUploadResult {
   assetId: string;
