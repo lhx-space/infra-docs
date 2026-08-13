@@ -7,6 +7,7 @@ import {searchRouter} from './search';
 import {teamRouter} from './team';
 import {uploadRouter} from './upload';
 import {userRouter} from './user';
+import {videoRouter} from './video';
 import {wikiRouter} from './wiki';
 
 export const router = Router();
@@ -20,3 +21,4 @@ router.use(documentRouter);
 router.use(linkPreviewRouter);
 router.use(searchRouter);
 router.use(uploadRouter);
+router.use(videoRouter);

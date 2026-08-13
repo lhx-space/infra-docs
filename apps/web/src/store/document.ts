@@ -10,6 +10,8 @@ import * as documentService from '@/services/document';
 import type {LinkPreviewResult} from '@/services/link-preview';
 import * as linkPreviewService from '@/services/link-preview';
 import * as uploadService from '@/services/upload';
+import type {VideoStatusResult, VideoUploadResult} from '@/services/video';
+import * as videoService from '@/services/video';
 
 export type {CreateDocumentInput, Document, DocumentVersion, UpdateDocumentInput};
 
@@ -20,6 +22,11 @@ interface DocumentState {
   loadingWikiId: string | null;
 
   fetchDocuments: (wikiId: string) => Promise<Document[]>;
+  /** 登出/切换账号时调用（见 `store/auth.ts` 的 `clearSession`，跟 `store/wiki.ts`
+   * 的 `reset` 是同一个理由）：清空按 wikiId 缓存的文档树，避免新账号登录后在还没打开
+   * 任何 Wiki 之前，`WikiDetail`/`Sidebar` 里恰好复用了同一个 wikiId 时展示出上一个
+   * 用户遗留下来的文档树。 */
+  reset: () => void;
   createDocument: (wikiId: string, input: CreateDocumentInput) => Promise<Document>;
   updateDocument: (
     wikiId: string,
@@ -36,6 +43,10 @@ interface DocumentState {
    * `store/wiki.ts` 的 `uploadCoverImage`——组件不直接 import services，统一走 store */
   uploadImage: (file: File) => Promise<string>;
   fetchLinkPreview: (url: string) => Promise<LinkPreviewResult | null>;
+  /** 传给 `DocumentEditor` 的 `uploadVideo`/`pollVideoStatus` 回调（见 video-transcoding
+   * spec.md），跟图片上传是同一个分工：组件不直接 import services */
+  uploadVideo: (file: File) => Promise<VideoUploadResult>;
+  pollVideoStatus: (assetId: string) => Promise<VideoStatusResult>;
 }
 
 export const useDocumentStore = create<DocumentState>((set, get) => ({
@@ -60,6 +71,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       set({loadingWikiId: null});
     }
   },
+
+  reset: () => set({documentsByWiki: {}, loadingWikiId: null}),
 
   createDocument: async (wikiId, input) => {
     const {document} = await documentService.createDocument(wikiId, input);
@@ -132,7 +145,10 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   fetchLinkPreview: async url => {
     const result = await linkPreviewService.fetchLinkPreview(url);
     return result.available ? result : null;
-  }
+  },
+
+  uploadVideo: videoService.uploadVideo,
+  pollVideoStatus: videoService.getVideoStatus
 }));
 
 // 稳定的空数组引用：selector 在状态未变化时必须返回同一个引用，否则

@@ -31,6 +31,11 @@ interface TeamState {
   setCurrentTeamId: (teamId: string) => void;
 
   fetchMyTeams: () => Promise<void>;
+  /** 登出/切换账号时调用（见 `store/auth.ts` 的 `clearSession`，跟 `store/wiki.ts`
+   * 的 `reset` 是同一个理由）：只重置 `teams`，不动 `currentTeamId`——它已经持久化在
+   * localStorage 里，新账号登录后下一次 `fetchMyTeams` 会自己校验这个值是否仍然属于
+   * 新账号的团队列表并回退（见下方 `fetchMyTeams` 里的兜底逻辑），这里不需要抢先处理。 */
+  reset: () => void;
   createTeam: (name: string) => Promise<Team>;
   updateTeamName: (teamId: string, name: string) => Promise<Team>;
   deleteTeam: (teamId: string) => Promise<void>;
@@ -84,6 +89,8 @@ export const useTeamStore = create<TeamState>((set, get) => ({
       set({loading: false});
     }
   },
+
+  reset: () => set({teams: [], loading: false}),
 
   createTeam: async name => {
     const {team} = await teamService.createTeam(name);

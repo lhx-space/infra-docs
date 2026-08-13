@@ -5,6 +5,8 @@ import Suggestion, {type SuggestionOptions} from '@tiptap/suggestion';
 import {SlashCommandMenu, type SlashCommandMenuHandle} from '../components/SlashCommandMenu';
 import {getActiveImageUploader} from './image-uploader-registry';
 import {startImageUpload} from './upload-image-plugin';
+import {getActiveVideoUploadErrorHandler} from './video-upload-error-registry';
+import {beginVideoUpload, endVideoUpload, getActiveVideoUploader} from './video-uploader-registry';
 
 export interface SlashCommandItem {
   title: string;
@@ -96,6 +98,46 @@ export const SLASH_COMMAND_ITEMS: SlashCommandItem[] = [
       input.onchange = () => {
         const file = input.files?.[0];
         if (file) startImageUpload(editor.view, file, uploadImage);
+      };
+      input.click();
+    }
+  },
+  {
+    title: '视频',
+    description: '从本地上传一个视频（也可以直接粘贴外部 HLS 地址插入）',
+    keywords: ['video', '视频'],
+    run: (editor, range) => {
+      editor.chain().focus().deleteRange(range).run();
+      const uploadVideo = getActiveVideoUploader();
+      if (!uploadVideo) return;
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'video/*';
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        beginVideoUpload();
+        uploadVideo(file).then(
+          result => {
+            editor
+              .chain()
+              .focus()
+              .insertVideo({
+                sourceType: 'upload',
+                assetId: result.assetId,
+                hlsUrl: result.hlsUrl,
+                posterUrl: result.posterUrl,
+                status: result.status,
+                error: result.error
+              })
+              .run();
+            endVideoUpload();
+          },
+          () => {
+            getActiveVideoUploadErrorHandler()?.('视频上传失败');
+            endVideoUpload();
+          }
+        );
       };
       input.click();
     }

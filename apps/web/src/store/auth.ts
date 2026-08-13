@@ -3,7 +3,10 @@ import {getJwtExpiryMs} from '@/lib/jwt';
 import {ApiError, refreshAccessToken} from '@/network';
 import type {AuthUser} from '@/services/auth';
 import * as authService from '@/services/auth';
+import {useDocumentStore} from './document';
 import {useProfileStore} from './profile';
+import {useTeamStore} from './team';
+import {useWikiStore} from './wiki';
 
 export type {AuthUser};
 export type AuthStatus = 'idle' | 'loading' | 'authenticated' | 'unauthenticated';
@@ -98,6 +101,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   clearSession: () => {
     cancelBackgroundRefresh();
     useProfileStore.getState().clearProfile();
+    // `wiki`/`team`/`document` 这几个 store 是跨整个 SPA 生命周期存在的单例，不会随路由
+    // 跳转到登录页而自动清空——不重置的话，切换账号重新登录后，`Sidebar` 挂载时看到的
+    // `wikis`/`teams` 还是上一个用户的数据（数组不是空的），`if (xxx.length === 0)
+    // fetchXxx()` 这类"避免重复拉取"的判断会直接跳过重新拉取，导致 Sidebar 卡在上一个
+    // 用户的内容上，直到某个操作恰好触发了重新拉取。跟 `useProfileStore.clearProfile()`
+    // 是同一类问题、同一个修法。
+    useWikiStore.getState().reset();
+    useTeamStore.getState().reset();
+    useDocumentStore.getState().reset();
     set({user: null, accessToken: null, status: 'unauthenticated'});
   },
 

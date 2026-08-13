@@ -696,6 +696,253 @@
   font-size: 13px;
 }
 
+/* ---- 视频 ---- */
+
+/* 限宽 + 播放前展示封面帧（见 document-editor spec.md「视频播放限制」），跟图片的
+   限宽逻辑保持一致的视觉语言（圆角、margin），只是承载的是 <video> 而不是 <img> */
+.doc-editor-video {
+  max-width: 100%;
+  margin: 0.8em 0;
+  border-radius: var(--doc-editor-radius);
+  overflow: hidden;
+}
+
+.doc-editor-video__player {
+  display: block;
+  width: 100%;
+  max-height: 480px;
+  background: #000;
+}
+
+/* 播放阶段的舞台容器：承载 <video> + 自定义控制条 + 缓冲指示。用自定义控制条替代
+   浏览器原生 `<video controls>`——原生控件在不同浏览器/系统下样式差异很大，也没法
+   跟随编辑器自己的深浅色主题，见组件 VideoView.tsx 顶部注释 */
+.doc-editor-video__stage {
+  position: relative;
+  background: #000;
+  line-height: 0;
+}
+
+/* 原生全屏时让 <video> 填满整个屏幕，而不是继续被 480px 的限高卡住 */
+.doc-editor-video__stage:fullscreen {
+  display: flex;
+  align-items: center;
+  background: #000;
+}
+
+.doc-editor-video__stage:fullscreen .doc-editor-video__player {
+  max-height: none;
+  width: 100%;
+  height: 100%;
+}
+
+/* 缓冲中：舞台正中央一个转圈指示，复用「转码中」占位同一个 `doc-editor-spin` 动画，
+   视觉语言保持一致 */
+.doc-editor-video__spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  border-radius: 50%;
+  border: 3px solid rgb(255 255 255 / 30%);
+  border-top-color: #fff;
+  animation: doc-editor-spin 0.8s linear infinite;
+  pointer-events: none;
+}
+
+/* 控制条默认隐藏（透明度 0 + 不可交互），播放中鼠标移动/暂停时通过 `--visible`
+   修饰符展示；用 opacity 而不是 display，方便做淡入淡出过渡，不用等 display 切换
+   完成再触发 transition */
+.doc-editor-video__controls {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: linear-gradient(to top, rgb(0 0 0 / 75%), rgb(0 0 0 / 0%));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.doc-editor-video__controls--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.doc-editor-video__ctrl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  padding: 0;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.doc-editor-video__ctrl-btn:hover {
+  background: rgb(255 255 255 / 18%);
+}
+
+.doc-editor-video__time {
+  flex-shrink: 0;
+  min-width: 34px;
+  color: #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 进度条：原生 `<input type="range">` 去掉默认外观后重画，播放/未播放两段用行内
+   `style.background` 的渐变直接画出来（见组件里 `seekBackground` 的注释），这里只需
+   要把 track 本身的背景设成透明，让输入框自己的背景透出来 */
+.doc-editor-video__seek {
+  flex: 1;
+  height: 4px;
+  margin: 0;
+  border-radius: 2px;
+  appearance: none;
+  cursor: pointer;
+}
+
+.doc-editor-video__seek::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.doc-editor-video__seek::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.doc-editor-video__seek::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.doc-editor-video__seek::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+}
+
+/* 转码中：跟图片上传的 loading 占位（`.doc-editor-image-uploading`）视觉语言一致
+   （border-dashed + 转圈动画），但整块区域会铺满宽度、有明显的高度，跟"一小段行内提示"
+   的图片占位区分开——视频转码耗时更长，需要一个更醒目、更占位的加载态 */
+.doc-editor-video--processing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  border: 1px dashed var(--doc-editor-border);
+  background-size: cover;
+  background-position: center;
+  background-color: var(--doc-editor-surface);
+}
+
+.doc-editor-video__placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--doc-editor-radius);
+  background: rgb(0 0 0 / 55%);
+  color: #fff;
+  font-size: 13px;
+}
+
+.doc-editor-video__placeholder::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgb(255 255 255 / 40%);
+  border-top-color: #fff;
+  animation: doc-editor-spin 0.8s linear infinite;
+}
+
+.doc-editor-video--failed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+  border: 1px dashed var(--doc-editor-danger);
+  border-radius: var(--doc-editor-radius);
+  background: var(--doc-editor-surface);
+}
+
+/* 已就绪但用户还没点播放：只展示封面（有 posterUrl 时）+ 一个居中播放按钮，不挂载
+   <video>/不附加 hls.js，避免还没打算看这段视频时就发起一次流媒体请求（见组件
+   VideoView.tsx 顶部注释「按需加载播放」）。没有 posterUrl 时（外部粘贴的 m3u8 地址
+   没有封面帧）退化成纯色底 + 播放按钮，视觉上跟 processing 占位区分开（没有转圈动画） */
+.doc-editor-video--poster {
+  position: relative;
+}
+
+.doc-editor-video__play-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 200px;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background-color: #000;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.doc-editor-video__play-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 55%);
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.doc-editor-video__play-trigger:hover .doc-editor-video__play-icon {
+  background: rgb(0 0 0 / 75%);
+  transform: scale(1.06);
+}
+
+/* 纯 CSS 画一个三角形播放图标，不额外引入图标资源 */
+.doc-editor-video__play-icon::before {
+  content: "";
+  border-style: solid;
+  border-width: 10px 0 10px 16px;
+  border-color: transparent transparent transparent #fff;
+  margin-left: 2px;
+}
+
+.doc-editor-video__error {
+  color: var(--doc-editor-danger);
+  font-size: 13px;
+  margin: 0;
+}
+
 /* ---- 悬浮工具栏 ---- */
 .doc-editor-bubble-menu {
   display: flex;

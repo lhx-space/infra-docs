@@ -1,0 +1,50 @@
+// 视频转码任务的状态追踪表。跟 `Document.content` 之间没有外键关系——`Video` 节点的
+// 属性里只存了这条记录的 `id`（`assetId`），语义上跟 image-upload-dedup 变更里图片
+// "URL 直接内嵌进 content"是同一种松耦合方式。
+//
+// 内容寻址去重 + 引用计数生命周期管理（见 video-dedup-and-lifecycle design.md 决策 1、4，
+// 推翻了 video-hls-embed design.md 决策 6 当时"不做引用计数/去重"的判断——转码成本远高于
+// 图片转码，值得为重复内容跳过一次完整的 ffmpeg 转码）：`sha256` 供上传前查重，`refCount`
+// 归零时连这条记录本身也会被物理删除（跟图片去重"归零只删对象、保留记录"不同，见 design.md
+// 决策 4——视频资产没有归零后仍保留记录的价值，产物已经被删了，保留记录也无法免转码）。
+enum VideoAssetStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+model VideoAsset {
+  id     String           @id @default(uuid(7)) @db.Uuid
+  status VideoAssetStatus @default(PROCESSING)
+  // 目前唯一取值是 "upload"——外部粘贴的 HLS 地址完全在前端本地生成节点，从不经过这张表
+  // （见 spec.md「视频插入来源」）。字段为未来可能新增的资产来源预留，本轮不建枚举。
+  sourceType String @default("upload")
+
+  // 原始上传文件内容的 sha256（十六进制），供上传前查重；本能力上线前产生的历史记录没有
+  // 这个值（`null`），永远不会被去重查找命中，等同于"未追踪"（见 design.md Migration Plan）
+  sha256 String? @unique
+
+  // 当前被多少篇已保存文档的内容实际引用（按视频节点出现次数计算，见 design.md 决策 2）。
+  // 新创建的资产由应用代码显式传 0（上传本身不认领引用，引用完全由文档保存时的内容 diff
+  // 建立，避免"上传 +1、保存 diff 又 +1"的双重计数）；字段默认值 1 只用于这次迁移给已有
+  // 历史记录回填（这些记录大概率正被某篇文档实际引用，`1` 比 `0` 更安全，见 Migration Plan）。
+  refCount Int @default(1)
+
+  // 原始上传文件在 `videos-raw` bucket 中的 objectKey；转码成功后被异步删除，转码失败时
+  // 保留供排查（见 design.md 决策 8），字段本身不随删除清空，只是对应的物理对象不再存在
+  originalObjectKey String
+
+  // 转码产物在 `videos` bucket 中的 objectKey，只有 status = READY 时才有值
+  hlsManifestKey String?
+  posterKey      String?
+
+  // 只有 status = FAILED 时才有值，供前端展示与人工排查
+  error String?
+
+  createdBy String @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("video_assets")
+}

@@ -29,6 +29,12 @@ interface WikiState {
   loading: boolean;
 
   fetchWikis: () => Promise<void>;
+  /** 登出/切换账号时调用（见 `store/auth.ts` 的 `clearSession`）：这个 store 是跨整个
+   * SPA 生命周期存在的单例，不会随路由跳转到登录页而自动清空——如果不重置，新账号登录后
+   * `Sidebar` 挂载时会看到 `wikis` 不是空数组（还是上一个用户的数据），`if (wikis.length
+   * === 0) fetchWikis()` 这个"避免重复拉取"的判断会直接跳过重新拉取，导致 Sidebar 一直
+   * 展示上一个用户的内容，直到某个操作恰好触发了重新拉取。 */
+  reset: () => void;
   createWiki: (input: CreateWikiInput) => Promise<Wiki>;
   updateWikiInfo: (wikiId: string, input: UpdateWikiInfoInput) => Promise<Wiki>;
   deleteWiki: (wikiId: string) => Promise<void>;
@@ -78,6 +84,8 @@ export const useWikiStore = create<WikiState>(set => ({
       set({loading: false});
     }
   },
+
+  reset: () => set({wikis: [], loading: false}),
 
   createWiki: async input => {
     const {wiki} = await wikiService.createWiki(input);

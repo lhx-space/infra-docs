@@ -12,7 +12,11 @@ import {
   updateDocument as updateDocumentModel
 } from '../models/document';
 import {buildDicebearUrl} from '../utils/dicebear';
+import {countImageAssetOccurrences, diffImageAssetOccurrences} from '../utils/image-content';
+import {countVideoAssetOccurrences, diffVideoAssetOccurrences} from '../utils/video-content';
 import * as documentVersionService from './document-version';
+import {acquireImageRef, releaseImageRef} from './storage';
+import {acquireVideoRef, releaseVideoRef} from './video';
 
 /** 风格对齐 services/wiki.ts 的 WikiError：status + message，handler 层统一映射成 HTTP 状态码 */
 export class DocumentError extends Error {
@@ -162,27 +166,70 @@ export async function updateDocument(
   }
 
   const parentChanged = input.parentId !== undefined && input.parentId !== existing.parentId;
-  if (parentChanged || input.order !== undefined) {
-    return prisma.$transaction(async tx => {
-      const siblings = (await listSiblingDocuments(wikiId, nextParentId, tx)).filter(
-        d => d.id !== documentId
-      );
-      const targetIndex = clampOrderIndex(input.order, siblings.length);
-      siblings.splice(targetIndex, 0, existing);
-      await reorderDocuments(
-        siblings.map((d, index) => ({id: d.id, order: index})),
-        tx
-      );
-      return updateDocumentModel(documentId, {...data, parentId: nextParentId}, tx);
-    });
+  const result =
+    parentChanged || input.order !== undefined
+      ? await prisma.$transaction(async tx => {
+          const siblings = (await listSiblingDocuments(wikiId, nextParentId, tx)).filter(
+            d => d.id !== documentId
+          );
+          const targetIndex = clampOrderIndex(input.order, siblings.length);
+          siblings.splice(targetIndex, 0, existing);
+          await reorderDocuments(
+            siblings.map((d, index) => ({id: d.id, order: index})),
+            tx
+          );
+          return updateDocumentModel(documentId, {...data, parentId: nextParentId}, tx);
+        })
+      : await updateDocumentModel(documentId, data);
+
+  // coverImage 变更（替换或清空）时释放旧引用（见 image-upload-dedup design.md 决策 4），
+  // 必须等上面的更新真正成功之后才释放，避免更新失败时旧图片的引用被错误地提前减掉。
+  if (
+    input.coverImage !== undefined &&
+    input.coverImage !== existing.coverImage &&
+    existing.coverImage
+  ) {
+    await releaseImageRef(existing.coverImage);
   }
 
-  return updateDocumentModel(documentId, data);
+  // 正文变化时同步维护视频引用计数（见 video-dedup-and-lifecycle design.md 决策 2、
+  // spec.md「视频引用计数生命周期管理」）：按 assetId 对比更新前后内容里的出现次数，
+  // 次数减少的释放对应差值、次数增加的（如恢复到一个更早引用了某视频的历史版本）补上
+  // 对应差值。同样必须等上面的更新真正成功之后才执行。
+  if (input.content !== undefined) {
+    const {acquired, released} = diffVideoAssetOccurrences(existing.content, input.content);
+    for (const [assetId, times] of acquired) await acquireVideoRef(assetId, times);
+    for (const [assetId, times] of released) await releaseVideoRef(assetId, times);
+
+    // 正文图片同理（见 upload-reliability-hardening design.md 决策 5、spec.md「正文
+    // 图片引用生命周期管理」）：跟上面视频的写法完全对称，两条路径分别按各自的节点
+    // 类型统计，互不干扰；跟下面 `coverImage` 单字段比较也是两条独立路径（一个是
+    // 字符串字段直接比较，一个是 JSON 内容树递归统计），不会对同一次引用重复计数。
+    const imageDiff = diffImageAssetOccurrences(existing.content, input.content);
+    for (const [src, times] of imageDiff.acquired) await acquireImageRef(src, times);
+    for (const [src, times] of imageDiff.released) await releaseImageRef(src, times);
+  }
+
+  return result;
 }
 
 export async function deleteDocument(wikiId: string, documentId: string): Promise<void> {
-  await getDocument(wikiId, documentId);
+  const existing = await getDocument(wikiId, documentId);
   await deleteDocumentModel(documentId);
+  // 见 image-upload-dedup design.md 决策 4：删除文档后释放其封面图的一次引用
+  if (existing.coverImage) {
+    await releaseImageRef(existing.coverImage);
+  }
+  // 见 video-dedup-and-lifecycle spec.md「删除文档释放全部视频引用」：按文档内容中
+  // 每个视频资产的出现次数，逐个释放对应次数的引用
+  for (const [assetId, times] of countVideoAssetOccurrences(existing.content)) {
+    await releaseVideoRef(assetId, times);
+  }
+  // 见 upload-reliability-hardening spec.md「删除文档释放全部正文图片引用」：跟视频
+  // 是同一套写法，独立于上面的 `coverImage` 释放
+  for (const [src, times] of countImageAssetOccurrences(existing.content)) {
+    await releaseImageRef(src, times);
+  }
 }
 
 /** 供搜索接口使用：`wikiIds` 必须是调用方已确认当前用户可访问的范围，这里不重复做权限判断 */

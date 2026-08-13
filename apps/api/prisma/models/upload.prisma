@@ -1,0 +1,23 @@
+// 已上传对象的内容寻址元数据表（见 image-upload-dedup design.md 决策 2）：`sha256` 对上传的
+// 原始文件内容计算，供上传时去重查找；`url` 是返回给消费方的完整公开访问地址，供替换/清空
+// 封面图时按值反查——释放引用时调用方手上只有旧的 URL 字符串，没有原始文件内容，无法重新
+// 算出 sha256。`refCount` 归零即代表不再被任何 Wiki/Document 的封面图引用，是否真的删除
+// 物理对象由服务层 best-effort 处理，这张表本身不关心。
+//
+// 设计上不绑定"covers"这一个具体 bucket（字段里带 `bucket`），为未来其他上传场景复用留了
+// 空间，但本轮唯一消费方仍然只有图片上传（见 design.md 决策 2）。
+model UploadedObject {
+  id       String @id @default(uuid(7)) @db.Uuid
+  sha256   String @unique
+  url      String @unique
+  bucket   String
+  objectKey String
+  size     Int
+  mimeType String
+  refCount Int    @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("uploaded_objects")
+}

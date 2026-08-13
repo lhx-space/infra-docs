@@ -4,6 +4,7 @@ import type {EditorView} from '@tiptap/pm/view';
 import {Decoration, DecorationSet} from '@tiptap/pm/view';
 import {getActiveImageUploadErrorHandler} from './image-upload-error-registry';
 import {getActiveImageUploader} from './image-uploader-registry';
+import {beginPendingUpload, endPendingUpload} from './pending-upload-registry';
 
 /**
  * 图片上传的"加载占位"实现：用 ProseMirror 的 Decoration（纯展示层，不写入文档内容）
@@ -77,6 +78,12 @@ let uploadCounter = 0;
  * 触发一次图片上传：立刻在当前选区位置挂一个 loading decoration，`uploadImage` resolve 后
  * 在同一位置插入真正的 image 节点并移除 decoration；reject 时只移除 decoration
  * （见 spec.md「通过工具栏插入图片」「粘贴图片」共用同一条流程）。
+ *
+ * 这是粘贴/拖拽/斜杠命令三个入口共用的唯一上传函数（见本文件顶部 Plugin 定义与
+ * `utils/slash-command.ts` 的"图片"候选项），在这一处调用
+ * `beginPendingUpload()`/`endPendingUpload()`（见 upload-reliability-hardening
+ * design.md 决策 3）就天然覆盖了全部图片上传入口，不需要在每个调用点分别处理；
+ * `endPendingUpload()` 在成功插入节点和失败提示错误两条路径都会执行，保证计数正确清零。
  */
 export function startImageUpload(
   view: EditorView,
@@ -90,6 +97,7 @@ export function startImageUpload(
 
   view.dispatch(view.state.tr.setMeta(uploadKey, {add: {id, pos}} satisfies UploadMeta));
 
+  beginPendingUpload();
   uploadImage(file).then(
     url => {
       const placeholderPos = findPlaceholderPos(view.state, id);
@@ -99,12 +107,14 @@ export function startImageUpload(
         tr.insert(placeholderPos, imageType.create({src: url}));
       }
       view.dispatch(tr);
+      endPendingUpload();
     },
     () => {
       view.dispatch(view.state.tr.setMeta(uploadKey, {remove: {id}} satisfies UploadMeta));
       const message = '图片上传失败';
       getActiveImageUploadErrorHandler()?.(message);
       onError?.(message);
+      endPendingUpload();
     }
   );
 }

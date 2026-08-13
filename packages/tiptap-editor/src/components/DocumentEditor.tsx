@@ -8,12 +8,18 @@ import {setActiveImageUploadErrorHandler} from '../utils/image-upload-error-regi
 import {setActiveImageUploader} from '../utils/image-uploader-registry';
 import {LinkPreviewPaste} from '../utils/link-preview-extension';
 import {type LinkPreviewResult, setActiveLinkPreviewFetcher} from '../utils/link-preview-registry';
+import {getPendingUploadCount, subscribePendingUploadCount} from '../utils/pending-upload-registry';
 import {SlashCommand} from '../utils/slash-command';
 import {imageUploadPlugin} from '../utils/upload-image-plugin';
+import {VideoPastePattern} from '../utils/video-paste-extension';
+import {setActiveVideoStatusPoller, type VideoStatusResult} from '../utils/video-status-registry';
+import {setActiveVideoUploadErrorHandler} from '../utils/video-upload-error-registry';
+import {setActiveVideoUploader, type VideoUploadResult} from '../utils/video-uploader-registry';
 import {CodeBlockView} from './CodeBlockView';
 import {DocumentOutline} from './DocumentOutline';
 import {FormattingBubbleMenu} from './FormattingBubbleMenu';
 import {MermaidView} from './MermaidView';
+import {VideoView} from './VideoView';
 import {ZoomableMedia} from './ZoomableMedia';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -46,6 +52,17 @@ export interface DocumentEditorProps {
   /** 链接预览元信息抓取的具体实现由消费方注入；不传时选择"显示为预览卡片"会静默降级为
    * 纯文本链接（跟抓取失败走的是同一条降级路径，见 link-preview spec.md「抓取失败时自动降级」） */
   fetchLinkPreview?: (url: string) => Promise<LinkPreviewResult | null>;
+  /** 视频上传的具体实现由消费方注入；不传时斜杠命令的"视频"候选项点选后不会有任何反应
+   * （粘贴外部 `.m3u8` 地址不依赖这个 prop，始终可用，见 document-editor spec.md
+   * 「视频插入来源」）。上传接口是异步转码，这里只需要返回 `assetId`，真正的转码结果
+   * 通过 `pollVideoStatus` 轮询获得。 */
+  uploadVideo?: (file: File) => Promise<VideoUploadResult>;
+  /** 查询视频转码状态的具体实现由消费方注入；不传时上传来源的视频节点会永久停留在
+   * "转码中"（见 document-editor spec.md「转码完成后自动更新」），不影响粘贴外部地址
+   * 这条不需要查询状态的路径 */
+  pollVideoStatus?: (assetId: string) => Promise<VideoStatusResult>;
+  /** 视频上传失败时的提示回调，不传时静默失败（同 `onImageUploadError` 的分工） */
+  onVideoUploadError?: (message: string) => void;
   /** 防抖结束后触发的保存回调；reject 会被捕获并展示为"保存失败" */
   onSave: (json: unknown) => Promise<void>;
   onSaveStatusChange?: (status: SaveStatus) => void;
@@ -84,6 +101,9 @@ export function DocumentEditor({
   uploadImage,
   onImageUploadError,
   fetchLinkPreview,
+  uploadVideo,
+  pollVideoStatus,
+  onVideoUploadError,
   onSave,
   onSaveStatusChange,
   fullscreen = false,
@@ -106,11 +126,22 @@ export function DocumentEditor({
         if (extension.name === 'mermaid') {
           return extension.extend({addNodeView: () => ReactNodeViewRenderer(MermaidView)});
         }
+        if (extension.name === 'video') {
+          return extension.extend({addNodeView: () => ReactNodeViewRenderer(VideoView)});
+        }
         return extension;
       }),
       SlashCommand,
       ImageUploadDecorations,
+      // 必须排在 LinkPreviewPaste 之后——Tiptap 的 ExtensionManager.plugins 在构建
+      // ProseMirror 插件列表时会把 extensions 数组整体 `.reverse()`（见
+      // @tiptap/core dist/index.js `get plugins()`），也就是数组里排得越靠后的扩展，
+      // 实际生效的插件优先级越高。两者的 `handlePaste` 都会尝试处理"整段粘贴内容是一个
+      // URL"，真机验证过：把 VideoPastePattern 放前面反而会被 LinkPreviewPaste 的
+      // 通用 URL 匹配抢先命中、弹出"纯链接/预览卡片"选择框——必须让它排在后面，
+      // `.m3u8` 地址才能被优先识别成视频（见 utils/video-paste-extension.ts 顶部注释）
       LinkPreviewPaste,
+      VideoPastePattern,
       CodeBlockKeymap
     ],
     []
@@ -165,6 +196,51 @@ export function DocumentEditor({
     setActiveLinkPreviewFetcher(isEditable ? (fetchLinkPreview ?? null) : null);
     return () => setActiveLinkPreviewFetcher(null);
   }, [isEditable, fetchLinkPreview]);
+
+  useEffect(() => {
+    setActiveVideoUploader(isEditable ? (uploadVideo ?? null) : null);
+    return () => setActiveVideoUploader(null);
+  }, [isEditable, uploadVideo]);
+
+  useEffect(() => {
+    setActiveVideoStatusPoller(pollVideoStatus ?? null);
+    return () => setActiveVideoStatusPoller(null);
+    // 不受 isEditable 限制：VIEWER 只读模式下已存在的"转码中"视频节点仍然需要能追上
+    // 最新状态（跟"是否允许发起新的上传"是两件不同的事，见 spec.md「转码完成后自动更新」）
+  }, [pollVideoStatus]);
+
+  useEffect(() => {
+    setActiveVideoUploadErrorHandler(isEditable ? (onVideoUploadError ?? null) : null);
+    return () => setActiveVideoUploadErrorHandler(null);
+  }, [isEditable, onVideoUploadError]);
+
+  // 图片/视频的上传请求已发出、但结果尚未插入编辑器内容这段窗口内，提示用户离开页面
+  // 会丢失这次操作（见 document-editor spec.md「上传进行中离开页面提示」）——一旦
+  // 结果已经插入节点（哪怕视频还在转码中），这个提示就不再需要（见组件外
+  // `pending-upload-registry.ts` 顶部注释、upload-reliability-hardening design.md
+  // 决策 3）。挂载时先读一次当前计数，避免"组件重新挂载时恰好有一次上传已经在
+  // 进行中却没监听到"这种边界情况。
+  useEffect(() => {
+    function handleBeforeUnload(event: BeforeUnloadEvent): void {
+      event.preventDefault();
+      // 部分浏览器（尤其是较旧的实现）仍然依赖 `returnValue` 而不是 `preventDefault()`
+      // 来判断是否要弹出确认框，两者都设置，兼容性更稳妥
+      event.returnValue = '';
+    }
+    function syncListener(count: number): void {
+      if (count > 0) {
+        window.addEventListener('beforeunload', handleBeforeUnload);
+      } else {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+      }
+    }
+    syncListener(getPendingUploadCount());
+    const unsubscribe = subscribePendingUploadCount(syncListener);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
 
   useEffect(() => {
     if (!fullscreen) return;

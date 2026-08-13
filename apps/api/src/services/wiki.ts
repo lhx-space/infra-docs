@@ -22,6 +22,7 @@ import {
   type WikiMemberWithUser
 } from '../models/wiki-member';
 import {buildDicebearUrl} from '../utils/dicebear';
+import {releaseImageRef} from './storage';
 
 /** 风格对齐 services/auth.ts 的 AuthError：status + message，handler 层统一映射成 HTTP 状态码 */
 export class WikiError extends Error {
@@ -117,14 +118,37 @@ export interface UpdateWikiInfoInput {
   allowJoinRequest?: boolean;
 }
 
-/** 权限已由 requireWikiRole 中间件前置校验，这里是纯数据操作，不重复判断角色 */
-export function updateWikiInfo(wikiId: string, data: UpdateWikiInfoInput): Promise<Wiki> {
-  return updateWikiInfoModel(wikiId, data);
+/**
+ * 权限已由 requireWikiRole 中间件前置校验，这里是纯数据操作，不重复判断角色。
+ * `coverImage` 变更时，先读出旧值再写入，写入成功后若旧值非空且与新值不同，释放该图片
+ * 的一次引用（见 image-upload-dedup design.md 决策 4）——不改变 `coverImage` 字段时
+ * （`data.coverImage === undefined`）不需要多查一次 Wiki，直接走原有的单次更新。
+ */
+export async function updateWikiInfo(wikiId: string, data: UpdateWikiInfoInput): Promise<Wiki> {
+  if (data.coverImage === undefined) {
+    return updateWikiInfoModel(wikiId, data);
+  }
+
+  const existing = await findWikiById(wikiId);
+  const updated = await updateWikiInfoModel(wikiId, data);
+  if (existing?.coverImage && existing.coverImage !== data.coverImage) {
+    await releaseImageRef(existing.coverImage);
+  }
+  return updated;
 }
 
-/** WikiMember 记录随 Wiki 一起级联删除（schema 的 onDelete: Cascade），这里不需要手动清理 */
-export function deleteWiki(wikiId: string): Promise<Wiki> {
-  return deleteWikiModel(wikiId);
+/**
+ * WikiMember 记录随 Wiki 一起级联删除（schema 的 onDelete: Cascade），这里不需要手动清理。
+ * 删除前读出 `coverImage`，删除成功后若其非空，释放该图片的一次引用
+ * （见 image-upload-dedup design.md 决策 4）。
+ */
+export async function deleteWiki(wikiId: string): Promise<Wiki> {
+  const existing = await findWikiById(wikiId);
+  const deleted = await deleteWikiModel(wikiId);
+  if (existing?.coverImage) {
+    await releaseImageRef(existing.coverImage);
+  }
+  return deleted;
 }
 
 export function listWikiMembers(wikiId: string): Promise<WikiMemberWithUser[]> {

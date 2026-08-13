@@ -1,6 +1,8 @@
 services:
   api:
-    build: ./apps/api
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
     ports:
       - '3000:3000'
     env_file:
@@ -8,6 +10,25 @@ services:
     depends_on:
       - postgres
       - redis
+      - minio
+    restart: unless-stopped
+    profiles: ["full"]
+
+  # 视频转码 worker（见 video-hls-embed design.md 决策 2）：跟 api 复用同一个镜像/构建产物，
+  # 只是启动命令换成 src/worker.ts 编译后的产物——不与 HTTP API 共用进程，避免 ffmpeg 转码
+  # 这种 CPU 密集任务拖慢请求处理。同样需要 ffmpeg（已在 Dockerfile 里装好）与 Redis（BullMQ
+  # 队列）、MinIO（读原始文件、写转码产物）。
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ['node', 'dist/worker.js']
+    env_file:
+      - ./apps/api/.env
+    depends_on:
+      - postgres
+      - redis
+      - minio
     restart: unless-stopped
     profiles: ["full"]
 

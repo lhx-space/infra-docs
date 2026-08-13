@@ -76,6 +76,7 @@
     "@tiptap/react": "^3.30.0",
     "@tiptap/starter-kit": "^3.30.0",
     "@tiptap/suggestion": "^3.30.0",
+    "hls.js": "^1.7.0",
     "lowlight": "^3.3.0",
     "mermaid": "^11.4.1"
   }

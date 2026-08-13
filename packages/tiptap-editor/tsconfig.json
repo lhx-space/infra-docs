@@ -4,7 +4,13 @@
     "rootDir": "src",
     "outDir": "dist",
     "jsx": "react-jsx",
-    "ignoreDeprecations": "6.0"
+    "ignoreDeprecations": "6.0",
+    // hls.js@1.7.0 打包发布的 `dist/hls.d.mts` 引用了它自己 devDependencies 里的
+    // `@svta/cml-cmcd`（未随包发布、也不在我们的依赖树里），且该文件里还有一处索引签名
+    // 写法在当前 TS 版本下不合法——这是第三方包自身声明文件的问题，不是我们代码的问题，
+    // 开启 skipLibCheck 跳过对所有 `.d.ts`/`.d.mts` 声明文件的类型检查（只检查我们自己写的
+    // `.ts`/`.tsx`），是处理这类第三方声明文件缺陷的标准做法。
+    "skipLibCheck": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["dist", "node_modules"]

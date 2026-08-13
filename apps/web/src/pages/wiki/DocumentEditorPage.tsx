@@ -31,6 +31,8 @@ export default function DocumentEditorPage() {
   const deleteDocument = useDocumentStore(state => state.deleteDocument);
   const uploadImage = useDocumentStore(state => state.uploadImage);
   const fetchLinkPreview = useDocumentStore(state => state.fetchLinkPreview);
+  const uploadVideo = useDocumentStore(state => state.uploadVideo);
+  const pollVideoStatus = useDocumentStore(state => state.pollVideoStatus);
 
   const [document_, setDocument] = useState<Document | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -172,6 +174,9 @@ export default function DocumentEditorPage() {
           uploadImage={uploadImage}
           onImageUploadError={message => toast.error(message)}
           fetchLinkPreview={fetchLinkPreview}
+          uploadVideo={uploadVideo}
+          pollVideoStatus={pollVideoStatus}
+          onVideoUploadError={message => toast.error(message)}
           onSave={handleSave}
           onSaveStatusChange={setSaveStatus}
           fullscreen={fullscreen}

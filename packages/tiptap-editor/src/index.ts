@@ -12,3 +12,5 @@ export {
 export {DocumentOutline} from './components/DocumentOutline';
 export {documentEditorExtensions} from './utils/extensions';
 export type {LinkPreviewResult} from './utils/link-preview-registry';
+export type {VideoStatusResult} from './utils/video-status-registry';
+export type {VideoUploadResult} from './utils/video-uploader-registry';
