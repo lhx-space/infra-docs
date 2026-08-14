@@ -1,4 +1,5 @@
 import type {DocumentVersion, Prisma} from '../generated/prisma/client';
+import {listContributorUserIds} from '../models/document-contributor';
 import {
   createVersion,
   findLatestVersion,
@@ -56,17 +57,23 @@ export function listVersions(documentId: string): Promise<DocumentVersion[]> {
 
 /**
  * 历史编辑人列表（见 packages/tiptap-editor 「标题旁展示历史编辑人」的体验优化）：
- * 从这篇文档的版本记录里去重取出全部作者 id，再批量补上 username/avatarUrl。
+ * 合并两个来源的作者 id 后去重，再批量补上 username/avatarUrl：
  *
- * 协同模式下持续编辑产生的版本快照，`createdBy` 是 `collab-server` 周期性持久化时
- * 传来的 `lastEditorId`（见 services/document.ts 的 `syncContentFromCollab`）——
- * 也就是"最近一次促成该次快照的人"，不是"参与过这次快照所有编辑的人"的精确并集
- * （协同场景下一次快照期间可能有多人共同编辑，这里只能归因到触发快照那一刻的
- * 最后写入方）。这是一个已知的近似，足够支撑"这篇文档大致被谁编辑过"这个体验层面的
- * 展示，不追求逐字级别的贡献者归因。
+ * - `listDistinctEditorIds`（`DocumentVersion.createdBy` 去重）：兼容本次修复上线前
+ *   就已经存在的历史版本记录——那些记录只留下了"触发快照那一刻的最后写入方"，做不到
+ *   完整的编辑者归因，但仍然是真实编辑过的人，不能因为改了写入逻辑就丢弃这部分数据。
+ * - `listContributorUserIds`（`DocumentContributor` 表）：本次修复新增的、跟版本快照
+ *   完全解耦的编辑者记录，每次内容确实发生变化就会 upsert，不受版本"编辑会话聚合"
+ *   规则的影响，是这个列表准确性的主要来源（见 services/document.ts
+ *   `syncContentFromCollab` 顶部注释——那里详细解释了为什么只靠 `DocumentVersion`
+ *   会导致同一协同会话内的其他编辑者从这个列表里消失）。
  */
 export async function listEditors(documentId: string): Promise<DocumentEditor[]> {
-  const editorIds = await listDistinctEditorIds(documentId);
+  const [versionEditorIds, contributorIds] = await Promise.all([
+    listDistinctEditorIds(documentId),
+    listContributorUserIds(documentId)
+  ]);
+  const editorIds = Array.from(new Set([...versionEditorIds, ...contributorIds]));
   if (editorIds.length === 0) return [];
 
   const users = await findUsersWithProfileByIds(editorIds);

@@ -11,13 +11,14 @@ import {
   type UpdateDocumentInput as UpdateDocumentModelInput,
   updateDocument as updateDocumentModel
 } from '../models/document';
+import {upsertDocumentContributor} from '../models/document-contributor';
 import {buildDicebearUrl} from '../utils/dicebear';
 import {countImageAssetOccurrences, diffImageAssetOccurrences} from '../utils/image-content';
 import {countVideoAssetOccurrences, diffVideoAssetOccurrences} from '../utils/video-content';
 import * as documentVersionService from './document-version';
 import {acquireImageRef, releaseImageRef} from './storage';
 import {acquireVideoRef, releaseVideoRef} from './video';
-import {contentJsonToYjsState, yjsStateToContentJson} from './yjs-content';
+import {contentJsonToYjsState, yjsStateToContentJson, yjsStateToTitle} from './yjs-content';
 
 /** 风格对齐 services/wiki.ts 的 WikiError：status + message，handler 层统一映射成 HTTP 状态码 */
 export class DocumentError extends Error {
@@ -143,11 +144,12 @@ export async function updateDocument(
 ): Promise<Document> {
   const existing = await getDocument(wikiId, documentId);
 
-  // 一旦文档完成协同初始化（yjsState 非空），正文内容只能通过实时协同连接更新，旧的
-  // REST 整篇覆盖写路径必须拒绝，避免两条写路径并存导致覆盖/丢失（见
-  // yjs-realtime-collaboration design.md 决策 9、specs/realtime-collaboration「已启用
-  // 协同的文档拒绝旧的整篇覆盖写入」）。标题不受此限制，继续走这里。
-  if (input.content !== undefined && existing.yjsState !== null) {
+  // 一旦文档完成协同初始化（yjsState 非空），正文与标题都只能通过实时协同连接更新，
+  // 旧的 REST 整篇覆盖写路径必须拒绝，避免两条写路径并存导致覆盖/丢失（见
+  // collaborative-document-title design.md 决策 5、specs/realtime-collaboration「已
+  // 启用协同的文档拒绝旧的整篇覆盖写入」——标题不再有例外，这条限制此前只对 `content`
+  // 生效，本次收回了标题的豁免）。
+  if ((input.content !== undefined || input.title !== undefined) && existing.yjsState !== null) {
     throw new DocumentError(409, 'collaboration_enabled');
   }
 
@@ -278,34 +280,48 @@ export async function restoreVersion(
 /**
  * 供 gRPC `DocumentSyncService.GetDocumentContent` 使用（见 yjs-realtime-collaboration
  * design.md 决策 6）：`apps/collab-server` 在存量文档首次被协同打开、`yjsState` 仍为空时，
- * 调用这个方法取回"由当前 `content` 转换出的初始 Yjs 二进制状态"——转换本身（ProseMirror
- * JSON → Yjs）在这里用 `y-prosemirror` 完成（见决策 5 的实现阶段修正说明），
- * `collab-server` 拿到后直接反序列化使用，不需要理解 ProseMirror 的具体结构。不做任何
- * 权限校验——调用这个方法之前，`collab-server` 已经在连接建立阶段通过 `CheckDocumentRole`
- * 校验过权限（见决策 4），这里只是内部服务间调用，不重复校验。
+ * 调用这个方法取回"由当前 `content`/`title` 转换出的初始 Yjs 二进制状态"——转换本身
+ * （ProseMirror JSON → Yjs）在这里用 `y-prosemirror` 完成（见决策 5 的实现阶段修正
+ * 说明），标题则直接写入同一个 `Y.Doc` 的 `Text('title')`（见 collaborative-document-
+ * title design.md 决策 1/3），两者统一编码成一份二进制，`collab-server` 拿到后直接
+ * 反序列化使用，不需要理解 ProseMirror 的具体结构，也不需要知道标题这个字段的存在。
+ * 不做任何权限校验——调用这个方法之前，`collab-server` 已经在连接建立阶段通过
+ * `CheckDocumentRole` 校验过权限（见决策 4），这里只是内部服务间调用，不重复校验。
  */
 export async function getDocumentContentForCollab(documentId: string): Promise<Buffer> {
   const doc = await findDocumentById(documentId);
   if (!doc) {
     throw new DocumentError(404, 'not_found');
   }
-  return contentJsonToYjsState(doc.content);
+  return contentJsonToYjsState(doc.content, doc.title);
 }
 
 /**
- * 供 gRPC `DocumentSyncService.SyncDocumentContent` 使用（见 design.md 决策 5/7）：
- * `collab-server` 周期性持久化时传来某一时刻完整的 Yjs 状态，这里先用 `y-prosemirror`
- * 还原出对应的 ProseMirror JSON（见决策 5 的实现阶段修正说明），再同步 `content`/
- * `searchText`，并在内容确实变化时按既有"编辑会话聚合"规则追加/更新一条版本快照
- * （复用 `snapshotVersion`，不重新实现，见 document-versioning spec.md）。
+ * 供 gRPC `DocumentSyncService.SyncDocumentContent` 使用（见 design.md 决策 5/7、
+ * collaborative-document-title design.md 决策 4）：`collab-server` 周期性持久化时
+ * 传来某一时刻完整的 Yjs 状态，这里先用 `y-prosemirror` 还原出对应的 ProseMirror JSON
+ * （见决策 5 的实现阶段修正说明），并从同一份状态里解码出标题纯文本，分别判断二者是否
+ * 变化后同步 `content`/`title`/`searchText`，并在任一发生变化时按既有"编辑会话聚合"
+ * 规则追加/更新一条版本快照（复用 `snapshotVersion`，不重新实现，见
+ * document-versioning spec.md）。
  *
  * `lastEditorId` 为空字符串（房间从未记录到任何写入方，理论上不应发生）时只同步
- * `content`/`searchText`，跳过版本快照——`DocumentVersion.createdBy` 是必填字段，
- * 没有明确作者的情况下不应该新建一条版本记录。
+ * `content`/`title`/`searchText`，跳过版本快照——`DocumentVersion.createdBy` 是必填
+ * 字段，没有明确作者的情况下不应该新建一条版本记录。
  *
- * 内容是否变化的判断用字符串比较（两侧都来自同一套 JSON 序列化路径，结构化 deep-equal
- * 在这里没有必要引入额外依赖）；调用方（`collab-server`）不需要自己维护"上一次内容是
- * 什么"的状态，这条判断只在这里做一次。
+ * 内容/标题是否变化的判断用字符串比较（两侧都来自同一套 JSON/字符串序列化路径，
+ * 结构化 deep-equal 在这里没有必要引入额外依赖）；调用方（`collab-server`）不需要自己
+ * 维护"上一次内容/标题是什么"的状态，这条判断只在这里做一次。响应字段 `contentChanged`
+ * 语义从"仅正文变化"扩展为"正文或标题任一变化"（`collab-server` 侧完全不使用这个
+ * 返回值的具体含义，只用于内部日志，见 `service/collab.rs` 的调用点，扩展语义不影响它）。
+ *
+ * `upsertDocumentContributor` 跟下面的 `snapshotVersion` 是两件独立的事，不能只做后者——
+ * `snapshotVersion` 的"编辑会话聚合"规则（30 分钟内只更新已有版本记录的内容，不推进
+ * `createdBy`）会导致同一协同会话内除第一个促成建版本的人以外，其余所有真正编辑过内容
+ * 的人从"历史编辑人"列表里永久消失（真实 bug：两人协同编辑同一篇文档，`listEditors`
+ * 只会看到其中一人）。`DocumentContributor` 记录的是"这个人确实促成了一次变化"，
+ * 每一轮 `contentChanged || titleChanged` 为真且有明确 `lastEditorId` 时都要 upsert，
+ * 不受版本聚合影响。
  */
 export async function syncContentFromCollab(
   documentId: string,
@@ -319,20 +335,30 @@ export async function syncContentFromCollab(
 
   const parsedContent = yjsStateToContentJson(yjsState) as Prisma.InputJsonValue;
   const contentChanged = JSON.stringify(existing.content) !== JSON.stringify(parsedContent);
-  if (!contentChanged) {
+
+  const decodedTitle = yjsStateToTitle(yjsState);
+  const nextTitle = decodedTitle.trim() || DEFAULT_TITLE;
+  const titleChanged = nextTitle !== existing.title;
+
+  if (!contentChanged && !titleChanged) {
     return {contentChanged: false};
   }
 
-  const searchText = extractPlainText(parsedContent);
-  await updateDocumentModel(documentId, {content: parsedContent, searchText});
+  const updateData: UpdateDocumentModelInput = {};
+  if (contentChanged) {
+    updateData.content = parsedContent;
+    updateData.searchText = extractPlainText(parsedContent);
+  }
+  if (titleChanged) {
+    updateData.title = nextTitle;
+  }
+  await updateDocumentModel(documentId, updateData);
 
   if (lastEditorId) {
-    await documentVersionService.snapshotVersion(
-      documentId,
-      existing.title,
-      parsedContent,
-      lastEditorId
-    );
+    await Promise.all([
+      documentVersionService.snapshotVersion(documentId, nextTitle, parsedContent, lastEditorId),
+      upsertDocumentContributor(documentId, lastEditorId)
+    ]);
   }
 
   return {contentChanged: true};

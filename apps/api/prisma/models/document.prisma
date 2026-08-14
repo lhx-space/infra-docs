@@ -4,14 +4,14 @@
 // DiceBear 规则按标题生成默认封面兜底。searchText 是从 content 提取的纯文本，只能由
 // 服务端在保存时派生更新，不接受客户端直传（见 spec.md「保存时同步维护搜索用纯文本字段」）。
 model Document {
-  id         String @id @default(uuid(7)) @db.Uuid
-  wikiId     String @db.Uuid
+  id         String  @id @default(uuid(7)) @db.Uuid
+  wikiId     String  @db.Uuid
   parentId   String? @db.Uuid
-  title      String @default("未命名文档")
-  content    Json   @default("{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\"}]}")
-  searchText String @default("")
+  title      String  @default("未命名文档")
+  content    Json    @default("{\"type\":\"doc\",\"content\":[{\"type\":\"paragraph\"}]}")
+  searchText String  @default("")
   coverImage String?
-  order      Int    @default(0)
+  order      Int     @default(0)
   // Yjs CRDT 二进制状态（`yrs::encode_state_as_update` 编码），由 apps/collab-server
   // 直接读写，不经过本服务（见 yjs-realtime-collaboration design.md 决策 5）。为空表示
   // 该文档从未被实时协同打开过，此时 `content` 仍是权威数据；一旦非空，`content` 就
@@ -19,11 +19,12 @@ model Document {
   // PATCH /documents/:id 的正文更新会被拒绝（见决策 9）。可空、默认 null，向后兼容存量数据。
   yjsState   Bytes?
 
-  wiki     Wiki       @relation(fields: [wikiId], references: [id], onDelete: Cascade)
+  wiki         Wiki                  @relation(fields: [wikiId], references: [id], onDelete: Cascade)
   // 自引用建树：删除父文档时级联删除全部子文档（递归），见 spec.md「级联删除」
-  parent   Document?  @relation("DocumentTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children Document[] @relation("DocumentTree")
-  versions DocumentVersion[]
+  parent       Document?             @relation("DocumentTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children     Document[]            @relation("DocumentTree")
+  versions     DocumentVersion[]
+  contributors DocumentContributor[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -49,4 +50,24 @@ model DocumentVersion {
   updatedAt DateTime @updatedAt
 
   @@map("document_versions")
+}
+
+// 文档的历史编辑人集合：跟上面 DocumentVersion 的"版本快照"完全解耦，只回答"这个人是否
+// 曾经编辑过这篇文档"，不受版本的"编辑会话聚合"规则影响（30 分钟内的连续编辑只更新已有
+// 版本记录、不推进 createdBy，见 services/document-version.ts `snapshotVersion`）——否则
+// 同一编辑会话内除第一个促成建版本的人以外，其余所有协同编辑者都会从「历史编辑人」列表里
+// 永久消失，这是修复前的真实 bug：两人协同编辑同一篇文档，`listEditors` 只会看到其中一人。
+// `apps/api` 的 `syncContentFromCollab` 每次收到 collab-server 报告的 `lastEditorId`
+// 且内容确实变化时都会 upsert 一条记录到这里，跟版本快照是"新建"还是"复用现有记录"无关，
+// 语义上是"这个人对这篇文档做过至少一次实际生效的编辑"，不是"触发了哪次持久化"。
+model DocumentContributor {
+  documentId    String   @db.Uuid
+  userId        String   @db.Uuid
+  firstEditedAt DateTime @default(now())
+  lastEditedAt  DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, userId])
+  @@map("document_contributors")
 }
