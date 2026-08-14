@@ -14,6 +14,7 @@ use yrs::updates::decoder::Decode;
 use yrs::{Doc, ReadTxn, StateVector, Transact, Update};
 
 use crate::repository;
+use crate::service::circuit_breaker::CircuitBreaker;
 use crate::service::grpc_client::GrpcClients;
 
 /// `VIEWER` 连接使用的协议：继承 `DefaultProtocol` 的其它行为（sync-step1 应答、
@@ -65,13 +66,18 @@ pub struct Room {
 pub struct RoomRegistry {
     rooms: RwLock<HashMap<String, Arc<Room>>>,
     persist_interval: Duration,
+    /// 跟连接鉴权路径（`handler::ws::upgrade`）共用的同一个熔断信号实例（见
+    /// `service::AppState` 顶部注释）——持久化任务只上报成功/失败，不会因为熔断开启
+    /// 就跳过尝试（它自己有独立的快速重试节奏，见 `spawn_persistence_task`）。
+    circuit_breaker: Arc<CircuitBreaker>,
 }
 
 impl RoomRegistry {
-    pub fn new(persist_interval: Duration) -> Self {
+    pub fn new(persist_interval: Duration, circuit_breaker: Arc<CircuitBreaker>) -> Self {
         Self {
             rooms: RwLock::new(HashMap::new()),
             persist_interval,
+            circuit_breaker,
         }
     }
 
@@ -134,6 +140,7 @@ impl RoomRegistry {
             db.clone(),
             grpc.clone(),
             self.persist_interval,
+            self.circuit_breaker.clone(),
         );
 
         rooms.insert(document_id.to_string(), room.clone());
@@ -147,49 +154,94 @@ impl RoomRegistry {
 /// 已经会判断内容是否真的变化（`content_changed`），避免产生冗余版本记录（见
 /// document-versioning spec.md「版本快照避免因周期性持久化产生冗余记录」），这里
 /// 重复判断没有必要，简单可靠优先。
+///
+/// 失败后的重试节奏（见 collab-server-resilience spec.md「周期性持久化失败的快速
+/// 重试」、system-performance-hardening design.md 决策 6）：一轮失败后不再机械等待
+/// 完整的 `interval`，改用远短于它的 `fast_retry_delay` 尽快重试；但连续多轮都失败时
+/// 不无限缩短/维持这个高频重试——超过 `MAX_FAST_RETRIES` 轮后退回正常的 `interval`
+/// 继续尝试，避免持续故障期间对本地数据库/`apps/api` 造成不必要的高频压力。一次成功
+/// 就重置计数器、恢复到"下一次失败也能快速重试"的状态。
 fn spawn_persistence_task(
     room: Arc<Room>,
     db: sqlx::PgPool,
     grpc: GrpcClients,
     interval: Duration,
+    circuit_breaker: Arc<CircuitBreaker>,
 ) -> JoinHandle<()> {
+    // 取正常周期的 1/8，并设一个 5 秒的绝对下限——避免 `persist_interval_secs` 配置得
+    //很小时这个值退化到几乎无意义的高频重试；同时不超过正常周期本身（`interval` 本来
+    // 就很短时，快速重试没有意义）。保守取值，标注为后续可依据真实运行数据调整（见
+    // design.md 决策——延续跟熔断阈值一致的取向）。
+    let fast_retry_delay = (interval / 8).max(Duration::from_secs(5)).min(interval);
+    /// 连续快速重试多少轮后放弃"尽快重试"、退回正常周期（见 spec.md「多轮持续失败后
+    /// 恢复正常周期」）。
+    const MAX_FAST_RETRIES: u32 = 3;
+
     tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(interval);
-        ticker.tick().await; // 第一次 tick 立即触发，跳过它，从下一个完整周期开始持久化
+        let mut consecutive_failures: u32 = 0;
+        tokio::time::sleep(interval).await; // 第一次沿用原来的行为：跳过立即触发，从下一个完整周期开始持久化
         loop {
-            ticker.tick().await;
-
-            let state = {
-                let awareness = room.broadcast.awareness().read().await;
-                awareness
-                    .doc()
-                    .transact()
-                    .encode_state_as_update_v1(&StateVector::default())
+            let succeeded = run_persistence_round(&room, &db, &grpc, &circuit_breaker).await;
+            let next_delay = if succeeded {
+                consecutive_failures = 0;
+                interval
+            } else {
+                consecutive_failures += 1;
+                if consecutive_failures <= MAX_FAST_RETRIES {
+                    fast_retry_delay
+                } else {
+                    interval
+                }
             };
-
-            if let Err(err) =
-                repository::document::save_yjs_state(&db, &room.document_id, &state).await
-            {
-                tracing::error!(document_id = %room.document_id, %err, "failed to persist yjsState");
-                continue;
-            }
-
-            let last_editor_id = room
-                .last_editor_id
-                .lock()
-                .map(|guard| guard.clone())
-                .unwrap_or_default();
-
-            if let Err(err) = grpc
-                .sync_document_content(&room.document_id, state, &last_editor_id)
-                .await
-            {
-                tracing::warn!(
-                    document_id = %room.document_id,
-                    %err,
-                    "sync_document_content grpc call failed"
-                );
-            }
+            tokio::time::sleep(next_delay).await;
         }
     })
+}
+
+/// 单轮持久化：编码当前状态 → 写本地 Postgres → 通过 gRPC 同步给 `apps/api`。返回
+/// `true` 表示整轮成功，`false` 表示任一步骤失败（调用方据此决定下一轮等待多久）。
+async fn run_persistence_round(
+    room: &Arc<Room>,
+    db: &sqlx::PgPool,
+    grpc: &GrpcClients,
+    circuit_breaker: &Arc<CircuitBreaker>,
+) -> bool {
+    let state = {
+        let awareness = room.broadcast.awareness().read().await;
+        awareness
+            .doc()
+            .transact()
+            .encode_state_as_update_v1(&StateVector::default())
+    };
+
+    if let Err(err) = repository::document::save_yjs_state(db, &room.document_id, &state).await {
+        tracing::error!(document_id = %room.document_id, %err, "failed to persist yjsState");
+        return false;
+    }
+
+    let last_editor_id = room
+        .last_editor_id
+        .lock()
+        .map(|guard| guard.clone())
+        .unwrap_or_default();
+
+    match grpc
+        .sync_document_content(&room.document_id, state, &last_editor_id)
+        .await
+    {
+        Ok(_) => {
+            circuit_breaker.on_success();
+            true
+        }
+        Err(err) => {
+            circuit_breaker.on_failure();
+            tracing::warn!(
+                document_id = %room.document_id,
+                grpc_code = %err.code(),
+                grpc_message = %err.short_message(),
+                "sync_document_content grpc call failed"
+            );
+            false
+        }
+    }
 }

@@ -15,7 +15,15 @@ pub struct Config {
     /// 而不是 `localhost`——本地调试时实测过 `localhost` 会被解析成 `::1`（IPv6），
     /// 如果 `apps/api` 只绑定了 IPv4（`0.0.0.0`），tonic 的 transport 连接会直接失败
     /// （`status: Unknown, message: "transport error"`），换成明确的 IPv4 地址消除这个
-    /// 歧义；生产环境用 docker-compose 的服务名（如 `http://api:4001`）不受影响。
+    /// 歧义；生产环境用 docker-compose 的服务名（如 `http://api:4011`）不受影响。
+    ///
+    /// 端口默认 `4011` 而不是更直觉的 `4001`：实测在 macOS 上 `4001` 会跟 QQ 桌面客户端
+    /// 自己占用的 `127.0.0.1:4001` 撞车——两者都能同时处于 `LISTEN` 状态（`apps/api` 绑的
+    /// 是通配地址 `*:4001`，QQ 绑的是精确地址 `127.0.0.1:4001`），系统会把发往
+    /// `127.0.0.1:4001` 的连接优先路由给绑定更精确的 QQ，导致这里的 gRPC 调用连上一个不
+    /// 认识 gRPC 协议的进程、直接报 `transport error`——现象跟"`apps/api` 没启动"一模一样，
+    /// 排查时曾经因此误判（见 system-performance-hardening 相关排查记录），换成一个更
+    /// 少见的端口从根上避免这类偶发冲突。
     pub api_grpc_addr: String,
     /// 周期性持久化的触发间隔（决策 7/8，Open Questions 里"具体取值待实现阶段确定"
     /// 的落地）：默认 120 秒，一个保守的初始值，先测出真实写入压力再按需调整，
@@ -33,7 +41,7 @@ impl Config {
             jwt_secret: env::var("JWT_SECRET")?,
             database_url: env::var("DATABASE_URL")?,
             api_grpc_addr: env::var("API_GRPC_ADDR")
-                .unwrap_or_else(|_| "http://127.0.0.1:4001".to_string()),
+                .unwrap_or_else(|_| "http://127.0.0.1:4011".to_string()),
             persist_interval_secs: env::var("PERSIST_INTERVAL_SECS")
                 .unwrap_or_else(|_| "120".to_string())
                 .parse()?,

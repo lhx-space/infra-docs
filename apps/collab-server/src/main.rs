@@ -26,10 +26,35 @@ async fn main() -> anyhow::Result<()> {
     let log_directive = std::env::var("RUST_LOG")
         .or_else(|_| std::env::var("LOG_LEVEL"))
         .unwrap_or_else(|_| "info".to_string());
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::new(log_directive))
-        .json()
-        .init();
+
+    // 把 `log` crate facade 的日志记录（部分第三方依赖内部用这套，不是 `tracing`）桥接进
+    // `tracing` 的订阅者管线——`tracing_subscriber::fmt()...init()` 默认就带这份桥接
+    // （"tracing-log" 是它的默认 feature），不需要（也不能）再手动调一次
+    // `tracing_log::LogTracer::init()`：两边都想拿 `log` crate 全局唯一的那个 logger 注册槛
+    // 位，手动调用会跟 `fmt().init()` 内部已经做的注册撞车，直接 panic（`SetLoggerError`，
+    // 实测踩过这个坑）。
+    let is_production = std::env::var("APP_ENV")
+        .map(|v| v == "production")
+        .unwrap_or(false);
+    let env_filter = tracing_subscriber::EnvFilter::new(log_directive);
+    if is_production {
+        // `flatten_event(true)`：把 `tracing::info!(a = 1, "msg")` 里的 `a`/消息本身直接
+        // 拍平到 JSON 顶层字段（`{"a":1,"message":"msg",...}`），而不是嵌套在默认的
+        // `{"fields":{"a":1,"message":"msg"},...}` 结构里——跟 `apps/api` 那边 pino 输出的
+        // 扁平字段风格（`{"level":30,"msg":"...","port":3000,...}`）保持一致，方便同一套
+        // 日志采集/检索规则同时适配 Node 和 Rust 这两个服务，不需要为 Rust 这边单独写一套
+        // "先展开 fields 再解析"的规则。
+        tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .json()
+            .flatten_event(true)
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter(env_filter)
+            .pretty()
+            .init();
+    }
 
     let config = Config::from_env()?;
     tracing::info!(host = %config.host, port = config.port, "collab-server starting");

@@ -21,6 +21,7 @@ use tokio::sync::Mutex as TokioMutex;
 
 use crate::middleware::auth::ConnectionMode;
 use crate::service::AppState;
+use crate::service::circuit_breaker::CallDecision;
 use crate::service::collab::ReadOnlyProtocol;
 use crate::service::ws_adapter::{WsSink, WsStream};
 use crate::utils::jwt::verify_access_token;
@@ -41,11 +42,41 @@ pub async fn upgrade(
     };
     let user_id = claims.sub;
 
+    // 连接鉴权的熔断保护（见 collab-server-resilience spec.md「连接鉴权的熔断保护」、
+    // system-performance-hardening design.md 决策 5）：熔断开启期间直接快速失败，
+    // 不再对每一个新连接都去等一次 gRPC 超时——`apps/api` 短暂不可用时，这能避免
+    // 大量并发的新连接请求各自重复等待同样会失败的调用。
+    if state.circuit_breaker.before_call() == CallDecision::Reject {
+        tracing::warn!(
+            %document_id,
+            "circuit breaker open, rejecting connection auth request without calling apps/api"
+        );
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "access control unavailable",
+        )
+            .into_response();
+    }
+
     let mode = match state.grpc.check_document_role(&user_id, &document_id).await {
-        Ok((true, role)) => ConnectionMode::from(role),
-        Ok((false, _)) => return (StatusCode::FORBIDDEN, "forbidden").into_response(),
+        Ok((true, role)) => {
+            state.circuit_breaker.on_success();
+            ConnectionMode::from(role)
+        }
+        Ok((false, _)) => {
+            // 业务上明确拒绝（用户没有权限），不代表 `apps/api` 不可达，仍然算一次
+            // 成功的调用，不应该累积进熔断的失败计数。
+            state.circuit_breaker.on_success();
+            return (StatusCode::FORBIDDEN, "forbidden").into_response();
+        }
         Err(err) => {
-            tracing::error!(%err, %document_id, "check_document_role grpc call failed");
+            state.circuit_breaker.on_failure();
+            tracing::error!(
+                grpc_code = %err.code(),
+                grpc_message = %err.short_message(),
+                %document_id,
+                "check_document_role grpc call failed"
+            );
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
                 "access control unavailable",
