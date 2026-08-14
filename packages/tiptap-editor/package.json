@@ -9,12 +9,12 @@
   "author": "luhanxin",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/juwenzhang/lhx-kit.git",
+    "url": "git+https://github.com/lhx-space/infra-docs.git",
     "directory": "packages/tiptap-editor"
   },
-  "homepage": "https://juwenzhang.github.io/lhx-kit/",
+  "homepage": "https://github.com/lhx-space/infra-docs/tree/main/packages/tiptap-editor#readme",
   "bugs": {
-    "url": "https://github.com/juwenzhang/lhx-kit/issues"
+    "url": "https://github.com/lhx-space/infra-docs/issues"
   },
   "type": "module",
   "main": "dist/index.js",

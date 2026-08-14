@@ -1,34 +1,67 @@
-# React + TypeScript + Vite
+# @luhanxin/web
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+> The React frontend for infra-docs — Team/Wiki workspaces, real-time collaborative document editing, and everything in between.
 
-Currently, two official plugins are available:
+**[English](./README.md) | [简体中文](./README.zh-CN.md)**
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Part of the [infra-docs](../../README.md) monorepo. See the [root README](../../README.md) for the overall architecture and how this app fits alongside `apps/api` and `apps/collab-server`.
 
-## React Compiler
+## Features
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+- **Auth** — login / registration, session handled via `store/auth.ts`.
+- **Team & Wiki workspaces** — team-level Wiki directories, Wiki list/detail views, invite-link and share-link redemption flows.
+- **Real-time collaborative document editing** — `pages/wiki/DocumentEditorPage.tsx`, built on [`@luhanxin/tiptap-editor`](../../packages/tiptap-editor) with a Yjs (`yjs` / `y-indexeddb` / `y-websocket`) collaboration backend.
+- **Command palette search** (`cmdk`), pinned/favorite items, light/dark theme.
+- **Frontend error monitoring** wired up via [`@luhanxin/error-monitor`](../../packages/error-monitor) (global listeners in `main.tsx`, `ErrorBoundary` around the app shell).
 
-Note: This will impact Vite dev & build performances.
+## Tech stack
 
-## Expanding the Oxlint configuration
+React 19 · Vite 8 · TypeScript · Tailwind CSS 4 · Radix UI · React Router 7 · Zustand 5 · Yjs
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## Routes
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+Declared centrally in [`src/router/routes.tsx`](./src/router/routes.tsx):
+
+| Path | Page | Auth |
+| --- | --- | --- |
+| `/login`, `/register` | `pages/Login`, `pages/Register` | guest only |
+| `/home` | `pages/Home` | required |
+| `/wiki` | `pages/wiki/WikiList` | required |
+| `/wiki/:wikiId` | `pages/wiki/WikiDetail` | required |
+| `/wiki/:wikiId/documents/:documentId` | `pages/wiki/DocumentEditorPage` | required |
+| `/teams/:teamId/wikis` | `pages/team/TeamWikiDirectory` | required |
+| `/invites/:token` | `pages/InviteRedeem` | required |
+| `/share-links/:token` | `pages/ShareLinkRedeem` | required |
+
+## Development
+
+This app expects `apps/api` and `apps/collab-server` to be running (see the [root README](../../README.md#getting-started)).
+
+```bash
+cp .env.example .env
+pnpm dev            # from this directory, or `pnpm --filter web dev` from the repo root
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Open <http://localhost:5173>.
+
+## Environment variables
+
+| Variable | Description |
+| --- | --- |
+| `VITE_API_BASE_URL` | `apps/api` REST base URL (default `http://localhost:3000`) |
+| `VITE_COLLAB_WS_URL` | `apps/collab-server` WebSocket URL for Yjs sync (default `ws://localhost:4000/ws`) |
+
+Both are compile-time constants baked into the production build — changing them requires a rebuild, not just a runtime env change.
+
+## Scripts
+
+```bash
+pnpm dev         # vite dev server
+pnpm build       # tsc -b && vite build
+pnpm preview     # preview the production build locally
+pnpm typecheck   # tsc --noEmit
+```
+
+## State management
+
+Zustand stores under [`src/store`](./src/store): `auth`, `document`, `pinned`, `profile`, `search`, `shell`, `team`, `theme`, `wiki` — each owns one functional domain and roughly mirrors the page/route split above.

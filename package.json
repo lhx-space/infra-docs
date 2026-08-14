@@ -3,6 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "description": ". — business full-stack monorepo",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lhx-space/infra-docs.git"
+  },
+  "homepage": "https://github.com/lhx-space/infra-docs#readme",
+  "bugs": {
+    "url": "https://github.com/lhx-space/infra-docs/issues"
+  },
   "type": "module",
   "packageManager": "pnpm@10.0.0",
   "engines": {
