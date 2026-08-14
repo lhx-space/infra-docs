@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ===== 前端 / Node 检查 (apps/web, apps/api, apps/desktop, packages/*) =====
+  frontend:
+    name: Frontend (lint + typecheck + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm build
+
+  # ===== Rust 检查 (apps/collab-server，见 openspec/changes/yjs-realtime-collaboration) =====
+  rust:
+    name: Rust (fmt + clippy + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install protoc
+        # build.rs 里的 tonic-build 需要系统级 protoc 编译 /protos 下的 .proto 契约
+        # （见 apps/collab-server/Dockerfile 同样的依赖，两处保持一致）。
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy -- -D warnings
+      - run: cargo test
+        # 目前尚无需要真实数据库的集成测试；一旦 tasks.md 里涉及 DB 读写的测试落地
+        # （如 repository::document 的 sqlx 查询），需要在这里加一个 postgres service
+        # container 并注入 DATABASE_URL，现在先不引入用不到的基础设施。
+
+  # ===== Docker 构建验证 (只验证能build成功，不推送) =====
+  docker:
+    name: Docker (build check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build api/worker image
+        # api 与 worker 两个 docker-compose service 共用同一个 Dockerfile/镜像
+        # （只是启动命令不同），这里构建一次即覆盖两者。
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+      - name: Build collab-server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/collab-server/Dockerfile
+          push: false
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
