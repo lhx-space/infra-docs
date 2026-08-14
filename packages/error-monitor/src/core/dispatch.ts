@@ -1,6 +1,13 @@
 import {createDeduper, DEFAULT_DEDUP_WINDOW_MS, type Deduper} from './dedupe';
 import {createThrottle, type Throttle} from './throttle';
-import type {BeforeSendHook, DedupeOptions, ErrorReport, Reporter, ThrottleOptions} from './types';
+import type {
+  BeforeSendHook,
+  DedupeOptions,
+  ErrorReport,
+  Reporter,
+  ThrottleOptions,
+  TraceInfoExtractor
+} from './types';
 
 let reporters: Reporter[] = [];
 let beforeSend: BeforeSendHook | undefined;
@@ -9,6 +16,7 @@ let throttle: Throttle = createThrottle(null, () => {});
 let configuredAppName: string | undefined;
 let configuredAppVersion: string | undefined;
 let currentUserId: string | undefined;
+let extractTraceInfo: TraceInfoExtractor | undefined;
 let idCounter = 0;
 
 export interface ConfigureDispatchOptions {
@@ -18,6 +26,9 @@ export interface ConfigureDispatchOptions {
   throttle?: ThrottleOptions;
   appName?: string;
   appVersion?: string;
+  /** 见 error-monitor-network-support design.md 决策 2/4：`promise`/`manual` 两类来源
+   * 在生成报告前会调用这个钩子尝试提取 `traceId`。不传等同于禁用，行为与改动前一致。 */
+  extractTraceInfo?: TraceInfoExtractor;
 }
 
 function buildThrottle(options: ThrottleOptions | undefined): Throttle {
@@ -51,8 +62,20 @@ export function configureDispatch(options: ConfigureDispatchOptions): void {
   beforeSend = options.beforeSend;
   configuredAppName = options.appName;
   configuredAppVersion = options.appVersion;
+  extractTraceInfo = options.extractTraceInfo;
   deduper = createDeduper(options.dedupe ?? {});
   throttle = buildThrottle(options.throttle);
+}
+
+/**
+ * 供 `listeners.ts`（`handleUnhandledRejection`）/`report-error.ts`（`reportError`）
+ * 调用：把已配置的 `extractTraceInfo` 应用在原始错误值上。未配置该钩子时始终返回
+ * `undefined`，两处调用点的行为与改动前完全一致（见 spec.md「未配置提取钩子」）。
+ */
+export function getTraceInfo(
+  reason: unknown
+): {traceId?: string; extra?: Record<string, unknown>} | undefined {
+  return extractTraceInfo?.(reason);
 }
 
 /**
@@ -84,7 +107,7 @@ function generateId(): string {
  * 由 `dispatchError` 统一补全，采集侧不需要关心。 */
 export type RawErrorInput = Pick<
   ErrorReport,
-  'source' | 'level' | 'message' | 'stack' | 'componentStack' | 'extra'
+  'source' | 'level' | 'message' | 'stack' | 'componentStack' | 'extra' | 'traceId'
 > &
   Partial<Pick<ErrorReport, 'userId'>> & {
     /**

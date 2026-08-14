@@ -1,4 +1,5 @@
 import {type CSSProperties, useState} from 'react';
+import {registerNetworkConnection} from '../core/network-listeners';
 import {reportError} from '../core/report-error';
 
 const FAB_STYLE: CSSProperties = {
@@ -119,6 +120,38 @@ export function ErrorMonitorDevTools({enabled = true}: ErrorMonitorDevToolsProps
           </button>
           <button type="button" style={BTN_STYLE} onClick={() => setThrowOnRender(true)}>
             触发 render 错误
+          </button>
+          <button
+            type="button"
+            style={BTN_STYLE}
+            onClick={() => {
+              // 指向一个必然连不上的地址（`.invalid` 是 RFC 2606 保留的测试域名），
+              // 触发真实的浏览器 `error`/`close` 事件——演示 `network` 来源（见
+              // error-monitor-network-support）。只关心连接级失败，不需要真的连上。
+              const ws = new WebSocket('wss://error-monitor-devtools.invalid/demo');
+              const unregister = registerNetworkConnection(ws, 'websocket', 'devtools-demo');
+              ws.addEventListener('close', () => unregister(), {once: true});
+            }}
+          >
+            触发 WebSocket 连接错误
+          </button>
+          <button
+            type="button"
+            style={BTN_STYLE}
+            onClick={() => {
+              const es = new EventSource('https://error-monitor-devtools.invalid/demo');
+              const unregister = registerNetworkConnection(es, 'sse', 'devtools-demo');
+              es.addEventListener(
+                'error',
+                () => {
+                  unregister();
+                  es.close();
+                },
+                {once: true}
+              );
+            }}
+          >
+            触发 SSE 连接错误
           </button>
           <button
             type="button"

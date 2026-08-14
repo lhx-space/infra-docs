@@ -8,10 +8,36 @@
  * - `manual`：业务代码主动调用 `reportError` 上报
  * - `meta`：`error-monitor` 自身产出的内部诊断信息（目前唯一场景：全局节流阀触发后，
  *   窗口结束时补一条"这个窗口内丢弃了 N 条报告"的汇总，见 design.md 决策 3）——不代表
- *   应用本身出了错误，只是关于"上报链路本身状态"的信号，跟其余 5 类来源的语义不同，
+ *   应用本身出了错误，只是关于"上报链路本身状态"的信号，跟其余来源的语义不同，
  *   单独归一类，不要跟 `manual` 混在一起
+ * - `network`：`WebSocket`/`EventSource` 的**连接级**失败（建连失败、异常关闭、反复
+ *   重连不成功），见 error-monitor-network-support design.md 决策 1——只关心连接本身，
+ *   不采集消息级错误、不做 HTTP 状态码统计，继续维持跟 APM 的边界；采集入口是消费方
+ *   显式调用 `registerNetworkConnection` 注册，不做自动探测
  */
-export type ErrorSource = 'render' | 'runtime' | 'promise' | 'resource' | 'manual' | 'meta';
+export type ErrorSource =
+  | 'render'
+  | 'runtime'
+  | 'promise'
+  | 'resource'
+  | 'manual'
+  | 'meta'
+  | 'network';
+
+/** `network` 来源的连接分类（见 `registerNetworkConnection`）：区分是原生 `WebSocket`
+ * 还是 `EventSource`（SSE），写入报告的 `extra.kind`。 */
+export type NetworkConnectionKind = 'websocket' | 'sse';
+
+/**
+ * 可插拔的链路追踪 id 提取钩子（见 error-monitor-network-support design.md 决策 2）：
+ * 输入是 `unhandledrejection`/`reportError` 拿到的原始 `unknown` 值，由消费方自己判断
+ * 这是不是一个网络请求错误、以及怎么从里面挖出 `traceId`——`error-monitor` 核心不认识
+ * 任何具体网络库/HTTP 响应头的概念，全部逻辑留给消费方实现。返回 `undefined` 表示
+ * "不是网络错误"或"提取失败"，此时报告不会携带 `traceId`。
+ */
+export type TraceInfoExtractor = (
+  reason: unknown
+) => {traceId?: string; extra?: Record<string, unknown>} | undefined;
 
 /**
  * 严重级别：`fatal` 用于完全没有被任何 `ErrorBoundary` 捕获、可能导致应用整体崩溃的错误；
@@ -34,6 +60,13 @@ export interface ErrorReport {
   stack?: string;
   /** 仅 `render` 来源有意义：React 提供的组件树路径 */
   componentStack?: string;
+  /**
+   * 可跟后端结构化日志关联的链路追踪标识（见 error-monitor-network-support
+   * proposal.md「Why」第 2 点）：只有配置了 `extractTraceInfo`（`promise`/`manual`
+   * 来源）且提取成功时才会填充，跟 `componentStack` 一样是"某些来源才有意义"的顶层
+   * 字段，不塞进 `extra`（见 design.md 决策 3）。
+   */
+  traceId?: string;
   timestamp: number;
   url: string;
   userAgent: string;

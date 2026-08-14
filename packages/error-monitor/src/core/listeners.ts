@@ -1,4 +1,4 @@
-import {dispatchError} from './dispatch';
+import {dispatchError, getTraceInfo} from './dispatch';
 
 function messageFromUnknown(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -28,13 +28,19 @@ function handleGlobalError(event: ErrorEvent): void {
 }
 
 /** 未处理的 Promise rejection：`async/await` 链路里没写 `.catch()` 的错误，这部分是
- * `ErrorBoundary` 完全覆盖不到的场景（见 design.md Context）。 */
+ * `ErrorBoundary` 完全覆盖不到的场景（见 design.md Context）。业务上最常见的场景就是
+ * 一个没被 catch 的网络请求错误，所以这里接入 `extractTraceInfo`（见
+ * error-monitor-network-support design.md 决策 4）：未配置该钩子或钩子判定不是网络
+ * 错误时，`getTraceInfo` 返回 `undefined`，行为与改动前完全一致。 */
 function handleUnhandledRejection(event: PromiseRejectionEvent): void {
+  const traceInfo = getTraceInfo(event.reason);
   dispatchError({
     source: 'promise',
     level: 'error',
     message: messageFromUnknown(event.reason),
-    stack: stackFromUnknown(event.reason)
+    stack: stackFromUnknown(event.reason),
+    traceId: traceInfo?.traceId,
+    extra: traceInfo?.extra
   });
 }
 

@@ -1,6 +1,12 @@
 import {configureDispatch, setDispatchUserId, updateNoiseControl} from './dispatch';
 import {attachGlobalListeners} from './listeners';
-import type {BeforeSendHook, DedupeOptions, Reporter, ThrottleOptions} from './types';
+import type {
+  BeforeSendHook,
+  DedupeOptions,
+  Reporter,
+  ThrottleOptions,
+  TraceInfoExtractor
+} from './types';
 
 export interface InitErrorMonitorOptions {
   /** 至少注册一个 Reporter，否则捕获到的错误无处可去（见 spec.md「可插拔的上报出口」）。 */
@@ -12,6 +18,9 @@ export interface InitErrorMonitorOptions {
   dedupe?: DedupeOptions;
   /** 全局节流阀配置，不传表示不启用（默认关闭，见 design.md 决策 3）。 */
   throttle?: ThrottleOptions;
+  /** 见 error-monitor-network-support design.md 决策 2/4：在 `promise`/`manual` 两类
+   * 来源生成报告前尝试提取链路追踪 id。不传等同于不启用该能力，行为与改动前一致。 */
+  extractTraceInfo?: TraceInfoExtractor;
 }
 
 let detachListeners: (() => void) | undefined;
@@ -30,7 +39,8 @@ export function initErrorMonitor(options: InitErrorMonitorOptions): void {
     dedupe: options.dedupe,
     throttle: options.throttle,
     appName: options.appName,
-    appVersion: options.appVersion
+    appVersion: options.appVersion,
+    extractTraceInfo: options.extractTraceInfo
   });
 
   detachListeners = attachGlobalListeners();
