@@ -13,7 +13,7 @@
 # 的验证范围）。结构基于标准 pnpm workspace 构建流程编写，如果实际构建时报错，需要按报错
 # 信息针对性调整（比如 pnpm 版本、Prisma 生成产物路径等）。
 
-FROM node:20-alpine AS base
+FROM node:22-alpine3.20 AS base
 RUN apk add --no-cache ffmpeg
 RUN corepack enable && corepack prepare pnpm@10.0.0 --activate
 WORKDIR /repo
