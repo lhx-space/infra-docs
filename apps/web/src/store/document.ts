@@ -34,6 +34,15 @@ interface DocumentState {
     documentId: string,
     input: UpdateDocumentInput
   ) => Promise<Document>;
+  /** 供协同标题场景使用（见 collaborative-document-title 之后新发现的 Sidebar 不同步
+   * 问题）：标题现在的持久化真源是 Y.Doc（经 collab-server 周期性落库），不再走这里的
+   * `updateDocument` REST 调用，所以 Sidebar/`documentsByWiki` 缓存不会再被自动同步。
+   * 这个 action 不发任何请求，只在本地把 `documentsByWiki` 里对应文档节点的 `title`
+   * 就地替换掉（写法照抄 `updateDocument`/`restoreVersion` 已有的 `.map()` 模式），
+   * 供 `DocumentEditor` 的 `onTitleChange`（本地输入和远程 CRDT 合并都会触发）调用，
+   * 让 Sidebar 感知到协同标题的变化。目标 wikiId 尚未拉取过文档树时（`documentsByWiki`
+   * 里没有这个 key）安全地什么都不做——没有可更新的数组，也不需要凭空创建一个。 */
+  patchDocumentTitleLocal: (wikiId: string, documentId: string, title: string) => void;
   deleteDocument: (wikiId: string, documentId: string) => Promise<void>;
   /** 离线（或请求失败）时自动降级读取本地 IndexedDB 缓存（见 document-editor spec.md
    * 「离线只读缓存」），成功拉取到的内容会写回缓存，供下次离线时使用 */
@@ -102,6 +111,19 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     }));
     void setCache(offlineCacheKeys.document(documentId), document);
     return document;
+  },
+
+  patchDocumentTitleLocal: (wikiId, documentId, title) => {
+    set(state => {
+      const documents = state.documentsByWiki[wikiId];
+      if (!documents) return state;
+      return {
+        documentsByWiki: {
+          ...state.documentsByWiki,
+          [wikiId]: documents.map(d => (d.id === documentId ? {...d, title} : d))
+        }
+      };
+    });
   },
 
   // 删除会级联清空多层子文档（见后端 spec.md「级联删除」），本地缓存直接重新拉取一次，

@@ -64,3 +64,15 @@ export interface HistoricalEditorInfo {
  * （两者默认值恰好也是 `'default'`，但显式声明避免"两处隐式约定恰好一致"这种脆弱耦合）。
  */
 export const Y_XML_FRAGMENT_FIELD = 'default';
+
+/**
+ * 标题对应的共享类型字段名，必须跟 `apps/api` `services/yjs-content.ts` 的
+ * `Y_TITLE_FRAGMENT_FIELD` 完全一致（见 collaborative-document-title design.md
+ * 决策 1/2）。跟正文一样也是一个 `XmlFragment`——`@tiptap/extension-collaboration`
+ * 内部固定用 `document.getXmlFragment(field)` 绑定共享状态，不支持绑定原始的
+ * `Y.Text`，所以标题绑定的极简 Tiptap 编辑器实例（见 `DocumentEditor.tsx`，只装配
+ * `Document`/`Paragraph`/`Text` 三个节点）产出的仍然是一份"恰好一个段落、不含任何
+ * mark"的 `XmlFragment`，产品语义上依然是纯文本标题，只是复用了跟正文相同的
+ * ProseMirror↔Yjs 绑定机制。
+ */
+export const Y_TITLE_FRAGMENT_FIELD = 'title';

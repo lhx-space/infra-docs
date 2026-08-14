@@ -1,7 +1,7 @@
 import type {HistoricalEditorInfo} from '@luhanxin/tiptap-editor';
 import {DocumentEditor} from '@luhanxin/tiptap-editor';
 import {History, Trash2} from 'lucide-react';
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
 import {toast} from 'sonner';
 import {ConfirmDialog} from '@/components/shared/ConfirmDialog';
@@ -40,7 +40,7 @@ export default function DocumentEditorPage() {
 
   const getWiki = useWikiStore(state => state.getWiki);
   const getDocument = useDocumentStore(state => state.getDocument);
-  const updateDocument = useDocumentStore(state => state.updateDocument);
+  const patchDocumentTitleLocal = useDocumentStore(state => state.patchDocumentTitleLocal);
   const deleteDocument = useDocumentStore(state => state.deleteDocument);
   const uploadImage = useDocumentStore(state => state.uploadImage);
   const fetchLinkPreview = useDocumentStore(state => state.fetchLinkPreview);
@@ -60,8 +60,6 @@ export default function DocumentEditorPage() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [historicalEditors, setHistoricalEditors] = useState<HistoricalEditorInfo[]>([]);
-
-  const titleSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // online/reloadKey 都不在下面的函数体里被读取，只是用来"触发效果重新执行"的信号量——
   // online 变化时重新拉一次覆盖"网络恢复后自动恢复可编辑状态并重新拉取最新数据"
@@ -122,13 +120,21 @@ export default function DocumentEditorPage() {
   const canEdit = role === 'OWNER' || role === 'EDITOR';
   const canRestoreVersion = role === 'OWNER';
 
+  /**
+   * 标题变化：协同模式下 `DocumentEditor` 内部已经把标题绑定到 Y.Doc 的一个共享
+   * `XmlFragment`（见 collaborative-document-title design.md），多人编辑会 CRDT
+   * 自动合并并由协同连接持久化——这里不再需要防抖 `PATCH`。
+   *
+   * 但仍然需要顺手同步一次 `store/document.ts` 的 `documentsByWiki`（`patchDocument
+   * TitleLocal`，不发请求，纯本地替换）——否则 Sidebar 的文档树只从这份 store 读标题，
+   * 标题改走 Y.Doc 之后这条链路被完全绕开了，会导致 Sidebar 一直停留在打开文档那一刻
+   * 的旧标题（这个回调对本地输入和远程 CRDT 合并都会触发，见 DocumentEditor.tsx，
+   * 所以这一步同时覆盖了"自己编辑"和"协作者同时打开着这篇文档"这两种情形；只停留在
+   * Sidebar、没打开这篇文档的协作者不在这次覆盖范围内，那需要额外的轮询/推送机制）。
+   */
   function handleTitleChange(next: string): void {
     setTitle(next);
-    if (!wikiId || !documentId) return;
-    if (titleSaveTimer.current) clearTimeout(titleSaveTimer.current);
-    titleSaveTimer.current = setTimeout(() => {
-      void updateDocument(wikiId, documentId, {title: next.trim() || '未命名文档'});
-    }, 500);
+    if (wikiId && documentId) patchDocumentTitleLocal(wikiId, documentId, next);
   }
 
   async function handleDelete(): Promise<void> {
