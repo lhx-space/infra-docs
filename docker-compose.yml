@@ -48,6 +48,24 @@ services:
     restart: unless-stopped
     profiles: ["full"]
 
+  # 实时协同服务（见 openspec/changes/yjs-realtime-collaboration design.md 决策 1）：
+  # Rust（Axum + yrs/y-sync）实现，跟 api/worker 一样是独立进程，但技术栈不同——不复用
+  # apps/api 的镜像/Dockerfile，走独立的 apps/collab-server/Dockerfile。跟 apps/api 之间
+  # 通过 gRPC 通信（决策 2/10），需要 apps/api 暴露的 gRPC 端口可达。
+  collab-server:
+    build:
+      context: .
+      dockerfile: apps/collab-server/Dockerfile
+    ports:
+      - '4000:4000'
+    env_file:
+      - ./apps/collab-server/.env
+    depends_on:
+      - postgres
+      - api
+    restart: unless-stopped
+    profiles: ["full"]
+
   postgres:
     container_name: yjs-docs-postgres
     image: postgres:16-alpine

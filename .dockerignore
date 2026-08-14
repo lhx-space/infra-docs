@@ -11,3 +11,10 @@ test-results
 *.log
 .env.local
 .env.*.local
+# Rust workspace 构建产物（apps/collab-server），Node/Web 镜像构建用不到，
+# 体积可能上 GB，排除后能明显缩短 docker build 的 context 传输时间
+target
+**/target
+# 本地开发用的 docker volume 数据（postgres/redis/minio 持久化目录）
+.data
+data

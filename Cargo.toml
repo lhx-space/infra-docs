@@ -1,0 +1,50 @@
+[workspace]
+resolver = "2"
+members = ["apps/collab-server"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "UNLICENSED"
+
+# 依赖版本统一在这里管理，各 crate 用 `{ workspace = true }` 引用，避免多个 crate
+# 各装一份不同版本导致行为不一致（跟 `apps/collab-server/Cargo.toml` 的用法保持一致）。
+[workspace.dependencies]
+# 异步运行时
+tokio = { version = "1", features = ["full"] }
+
+# Web / WebSocket 框架
+axum = { version = "0.7", features = ["macros", "ws"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# gRPC（服务间通信，见 openspec/changes/yjs-realtime-collaboration/design.md 决策 10）
+tonic = "0.12"
+prost = "0.13"
+
+# Yjs 协议兼容的 CRDT 实现（见 design.md 决策 1）
+yrs = "0.21"
+y-sync = "0.4"
+
+# 数据库
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono", "json", "uuid"] }
+
+# 鉴权（见 design.md 决策 3：本地校验 access token 签名，与 apps/api 共享 JWT_SECRET）
+jsonwebtoken = "9"
+
+# 序列化
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 错误处理
+anyhow = "1"
+thiserror = "1"
+
+# 日志
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# 工具类
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+dotenvy = "0.15"

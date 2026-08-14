@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package yjsdocs.collab.v1;
+
+// `collab-server`（Rust，apps/collab-server）与 `apps/api`（TS）之间的内部 gRPC 契约。
+//
+// 背景（见 openspec/changes/yjs-realtime-collaboration/design.md 决策 2/10）：
+// 权限判断（Team OWNER 兜底 + WikiMember 查询）、内容/搜索文本同步、版本快照触发这几类
+// 业务规则，只在 apps/api（TS）保留一份实现——collab-server 不重新实现，只通过下面两个
+// gRPC 服务调用它们，避免跨语言产生两份逐渐漂移的实现。
+//
+// - apps/api 是这两个服务的 gRPC server 实现方。
+// - apps/collab-server 是 gRPC 客户端调用方。
+//
+// 调用频率：均为低频路径（每次协同连接建立一次 CheckDocumentRole；每次持久化触发一次
+// SyncDocumentContent），不是逐字符的高频路径，一次 gRPC 往返的延迟可以接受。
+
+// 工作区角色，需与 apps/api `generated/prisma/client` 里的 WikiRole 保持一致
+// （见 openspec/specs/wiki-workspace/spec.md「基于角色的工作区访问权限」）。
+enum WikiRole {
+  WIKI_ROLE_UNSPECIFIED = 0;
+  VIEWER = 1;
+  EDITOR = 2;
+  OWNER = 3;
+}
+
+// ---- 连接鉴权 ----
+// 对应 design.md 决策 2/4：collab-server 在 WebSocket 连接建立阶段调用，判断发起连接的
+// 用户对目标文档所属 Wiki 是什么角色；复用 apps/api 现有 requireWikiRole 中间件的判断
+// 逻辑（含 Team OWNER 运行时兜底权限），不在 Rust 侧重新实现。
+service AccessControlService {
+  rpc CheckDocumentRole(CheckDocumentRoleRequest) returns (CheckDocumentRoleResponse);
+}
+
+message CheckDocumentRoleRequest {
+  // 已通过 JWT 签名校验（collab-server 本地校验，见 design.md 决策 3）后取出的用户 ID。
+  string user_id = 1;
+  string document_id = 2;
+}
+
+message CheckDocumentRoleResponse {
+  // granted = false 时，role 字段无意义，collab-server 必须拒绝该连接
+  // （等价于 REST 接口的 403 forbidden / 404 not_found，均视为拒绝连接）。
+  bool granted = 1;
+  WikiRole role = 2;
+}
+
+// ---- 内容与版本同步 ----
+// 对应 design.md 决策 5/7：collab-server 只负责 yjsState 二进制状态的直接读写；
+// 派生出的 ProseMirror JSON 交给 apps/api 同步 Document.content/searchText，并按既有的
+// "编辑会话聚合"规则判断是否需要新建/更新版本记录（见 document-versioning spec）。
+service DocumentSyncService {
+  rpc SyncDocumentContent(SyncDocumentContentRequest) returns (SyncDocumentContentResponse);
+
+  // 对应 design.md 决策 6：存量文档的惰性迁移——collab-server 首次为一篇 yjsState 为空
+  // 的文档建立连接时，调用这个只读方法取回当前的 content，用于生成初始 CRDT 状态。
+  rpc GetDocumentContent(GetDocumentContentRequest) returns (GetDocumentContentResponse);
+}
+
+message SyncDocumentContentRequest {
+  string document_id = 1;
+  // ProseMirror JSON（`editor.getJSON()` 的结构），序列化为字符串传输。
+  string content_json = 2;
+}
+
+message SyncDocumentContentResponse {
+  // 本次内容与上一次已存储的内容是否不同——apps/api 据此决定是否新建/更新版本记录
+  // （见 openspec/changes/yjs-realtime-collaboration/specs/document-versioning/spec.md
+  // 「版本快照避免因周期性持久化产生冗余记录」）。collab-server 不需要自己维护
+  // "上一次内容是什么"的状态。
+  bool content_changed = 1;
+}
+
+message GetDocumentContentRequest {
+  string document_id = 1;
+}
+
+message GetDocumentContentResponse {
+  // ProseMirror JSON 字符串；文档不存在时由 gRPC 状态码（NOT_FOUND）表达，不通过此消息体表达。
+  string content_json = 1;
+}
