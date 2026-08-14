@@ -13,7 +13,6 @@
     "start": "concurrently -n api,worker -c blue,magenta \"pnpm run start:api\" \"pnpm run start:worker\"",
     "start:api": "node --env-file=.env dist/server.js",
     "start:worker": "node --env-file=.env dist/worker.js",
-    "typecheck": "tsc --noEmit",
     "validate:prisma": "npx prisma validate",
     "generate:prisma": "npx prisma generate",
     "migrate:prisma": "npx prisma migrate dev",
