@@ -18,6 +18,7 @@ tonic = { workspace = true }
 prost = { workspace = true }
 yrs = { workspace = true }
 y-sync = { workspace = true }
+futures-util = { workspace = true }
 sqlx = { workspace = true }
 jsonwebtoken = { workspace = true }
 serde = { workspace = true }

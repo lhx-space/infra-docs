@@ -22,9 +22,22 @@ tower-http = { version = "0.6", features = ["cors", "trace"] }
 tonic = "0.12"
 prost = "0.13"
 
-# Yjs 协议兼容的 CRDT 实现（见 design.md 决策 1）
-yrs = "0.21"
-y-sync = "0.4"
+# Yjs 协议兼容的 CRDT 实现（见 design.md 决策 1）。
+#
+# 版本说明（实现阶段发现并修正）：立项时选的 `yrs 0.21` 与 `y-sync`（提供 WebSocket
+# 同步协议的房间广播/连接管理，见 apps/collab-server/src/service/collab.rs）实际锁定的
+# `yrs 0.17` 不兼容——`y-sync` 自 2023-11 发布 0.4.0 后未再更新，其内部固定依赖
+# `yrs = "0.17"`，两个不同大版本的 `yrs::Doc`/`Awareness` 类型无法互相传递。降级到
+# `0.17` 消除这个冲突；Yjs 二进制同步协议本身（这才是"协议兼容"真正依赖的部分）在
+# yrs 各版本间保持稳定，不受这个降级影响。
+yrs = "0.17"
+# `net` feature 提供 `BroadcastGroup`/`Subscription`（基于 tokio broadcast channel 的
+# 房间广播实现），是 apps/collab-server 真正要用的部分（默认 feature 不含它）。
+y-sync = { version = "0.4", features = ["net"] }
+# 把 axum::extract::ws::WebSocket 的 Sink<Message>/Stream 适配成 y-sync 要求的
+# Sink<Vec<u8>>/Stream<Item=Result<Vec<u8>,E>>（见 service/ws_adapter.rs），需要
+# "sink" feature 才能用 Sink trait（跟 y-sync 自己声明这个 feature 的方式一致）。
+futures-util = { version = "0.3", features = ["sink"] }
 
 # 数据库
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono", "json", "uuid"] }

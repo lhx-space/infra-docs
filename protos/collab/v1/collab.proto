@@ -4,7 +4,7 @@ package yjsdocs.collab.v1;
 
 // `collab-server`（Rust，apps/collab-server）与 `apps/api`（TS）之间的内部 gRPC 契约。
 //
-// 背景（见 openspec/changes/yjs-realtime-collaboration/design.md 决策 2/10）：
+// 背景（见 openspec/changes/yjs-realtime-collaboration/design.md 决策 2/5/10）：
 // 权限判断（Team OWNER 兜底 + WikiMember 查询）、内容/搜索文本同步、版本快照触发这几类
 // 业务规则，只在 apps/api（TS）保留一份实现——collab-server 不重新实现，只通过下面两个
 // gRPC 服务调用它们，避免跨语言产生两份逐渐漂移的实现。
@@ -14,6 +14,17 @@ package yjsdocs.collab.v1;
 //
 // 调用频率：均为低频路径（每次协同连接建立一次 CheckDocumentRole；每次持久化触发一次
 // SyncDocumentContent），不是逐字符的高频路径，一次 gRPC 往返的延迟可以接受。
+//
+// 实现阶段的修正（相对于立项时的初版契约，见 design.md 决策 5 的补充说明）：
+// `SyncDocumentContent`/`GetDocumentContent` 不再传输 ProseMirror JSON 字符串，改为
+// 传输 Yjs 二进制状态（`bytes`）。原因：ProseMirror JSON ↔ Yjs CRDT 结构的相互转换，
+// 需要精确匹配 `packages/tiptap-editor` 的具体 Schema（图片/视频/Mermaid/代码块/链接
+// 预览等自定义节点），这是一条 Schema 相关的业务逻辑，跟 y-prosemirror（JS 生态里
+// 唯一经过验证、且客户端本身也在用的同款转换实现）强绑定——在 Rust 侧重新实现一遍这个
+// 映射，等价于用不同语言重新发明一次 y-prosemirror，风险和工作量都远超预期，也违背了
+// "业务规则只保留一份实现"这条贯穿全部决策的原则。因此这两个转换方向都挪到 apps/api
+// （新增 yjs/y-prosemirror 依赖）完成，collab-server 全程只搬运不透明的 CRDT 二进制，
+// 不需要理解 ProseMirror Schema。
 
 // 工作区角色，需与 apps/api `generated/prisma/client` 里的 WikiRole 保持一致
 // （见 openspec/specs/wiki-workspace/spec.md「基于角色的工作区访问权限」）。
@@ -47,20 +58,32 @@ message CheckDocumentRoleResponse {
 
 // ---- 内容与版本同步 ----
 // 对应 design.md 决策 5/7：collab-server 只负责 yjsState 二进制状态的直接读写；
-// 派生出的 ProseMirror JSON 交给 apps/api 同步 Document.content/searchText，并按既有的
-// "编辑会话聚合"规则判断是否需要新建/更新版本记录（见 document-versioning spec）。
+// ProseMirror JSON ↔ Yjs 的相互转换与 Document.content/searchText 同步、版本快照
+// 触发全部交给 apps/api（用 yjs/y-prosemirror，见上方修正说明），按既有的"编辑会话聚合"
+// 规则判断是否需要新建/更新版本记录（见 document-versioning spec）。
 service DocumentSyncService {
   rpc SyncDocumentContent(SyncDocumentContentRequest) returns (SyncDocumentContentResponse);
 
   // 对应 design.md 决策 6：存量文档的惰性迁移——collab-server 首次为一篇 yjsState 为空
-  // 的文档建立连接时，调用这个只读方法取回当前的 content，用于生成初始 CRDT 状态。
+  // 的文档建立连接时，调用这个方法取回“由当前 content 转换出的初始 Yjs 二进制状态”
+  // （转换本身在 apps/api 完成），collab-server 拿到后直接反序列化成 yrs::Doc 使用，
+  // 不需要再做任何 Schema 相关的解析。
   rpc GetDocumentContent(GetDocumentContentRequest) returns (GetDocumentContentResponse);
 }
 
 message SyncDocumentContentRequest {
   string document_id = 1;
-  // ProseMirror JSON（`editor.getJSON()` 的结构），序列化为字符串传输。
-  string content_json = 2;
+  // 完整的 Yjs 状态（`yrs`/`Y.encodeStateAsUpdate` 编码的二进制更新），不是增量 update——
+  // collab-server 在触发持久化时点直接编码整份当前状态，apps/api 侧解码后据此重建
+  // 对应的 ProseMirror JSON，不需要维护增量应用的历史。
+  bytes yjs_state = 2;
+  // 触发本次持久化前，最后一次发起可写变更的用户 ID——由 collab-server 在房间内跟踪
+  // "最近一次成功应用写入的连接对应的 userId"（每次收到可写连接的同步更新时更新），
+  // 用于 apps/api 侧新建版本快照时的 `DocumentVersion.createdBy`（该字段为必填，需要
+  // 一个明确的作者）。房间从未收到过任何可写更新（理论上不应发生，内容变化必然源自
+  // 某次写入）时传空字符串，apps/api 侧遇到空值会跳过版本快照（只同步
+  // content/searchText，不新建版本记录）。
+  string last_editor_id = 3;
 }
 
 message SyncDocumentContentResponse {
@@ -76,6 +99,7 @@ message GetDocumentContentRequest {
 }
 
 message GetDocumentContentResponse {
-  // ProseMirror JSON 字符串；文档不存在时由 gRPC 状态码（NOT_FOUND）表达，不通过此消息体表达。
-  string content_json = 1;
+  // 由 apps/api 把当前 `content`（ProseMirror JSON）转换出的初始 Yjs 状态；
+  // 文档不存在时由 gRPC 状态码（NOT_FOUND）表达，不通过此消息体表达。
+  bytes yjs_state = 1;
 }

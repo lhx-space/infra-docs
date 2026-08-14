@@ -11,8 +11,16 @@ pub struct Config {
     /// 复用现有 Postgres（跟 `apps/api` 同一个数据库），直接读写 `Document.yjsState`
     /// （见 design.md 决策 5）。
     pub database_url: String,
-    /// `apps/api` 新增 gRPC server 的地址（见 design.md 决策 2/10）。
+    /// `apps/api` 新增 gRPC server 的地址（见 design.md 决策 2/10）。默认用 `127.0.0.1`
+    /// 而不是 `localhost`——本地调试时实测过 `localhost` 会被解析成 `::1`（IPv6），
+    /// 如果 `apps/api` 只绑定了 IPv4（`0.0.0.0`），tonic 的 transport 连接会直接失败
+    /// （`status: Unknown, message: "transport error"`），换成明确的 IPv4 地址消除这个
+    /// 歧义；生产环境用 docker-compose 的服务名（如 `http://api:4001`）不受影响。
     pub api_grpc_addr: String,
+    /// 周期性持久化的触发间隔（决策 7/8，Open Questions 里"具体取值待实现阶段确定"
+    /// 的落地）：默认 120 秒，一个保守的初始值，先测出真实写入压力再按需调整，
+    /// 不影响架构决策本身。
+    pub persist_interval_secs: u64,
 }
 
 impl Config {
@@ -25,7 +33,10 @@ impl Config {
             jwt_secret: env::var("JWT_SECRET")?,
             database_url: env::var("DATABASE_URL")?,
             api_grpc_addr: env::var("API_GRPC_ADDR")
-                .unwrap_or_else(|_| "http://localhost:4001".to_string()),
+                .unwrap_or_else(|_| "http://127.0.0.1:4001".to_string()),
+            persist_interval_secs: env::var("PERSIST_INTERVAL_SECS")
+                .unwrap_or_else(|_| "120".to_string())
+                .parse()?,
         })
     }
 }
