@@ -30,14 +30,17 @@ WORKDIR /repo
 FROM base AS build
 COPY . .
 RUN pnpm install --frozen-lockfile
-# 构建步骤偶尔在 CI（GitHub Actions 的 docker-container buildx driver）里会因为 esbuild
-# 子进程崩溃失败（堆栈落在 esbuild lib/main.js 的 IPC 包解析路径），本地用完全相同的命令
-# 分别在原生 arm64 与 --platform linux/amd64 模拟下均无法复现，怀疑是 runner 资源抖动或
-# 抓取平台二进制时的瞬时网络问题——失败一次后立即重试一次即可恢复，成本远低于排查一个
-# 无法稳定复现的偶发问题；如果重试后依然失败，说明是真实的确定性错误，需要看当时完整的
-# 报错文本（而不是只有堆栈尾部）才能继续定位。
-RUN pnpm --filter=@luhanxin/tiptap-editor... --filter=@app/api... run build \
-  || (echo "build failed, retrying once..." && pnpm --filter=@luhanxin/tiptap-editor... --filter=@app/api... run build)
+# apps/api/src/generated/prisma 是 `prisma generate` 的产物，按约定不提交进仓库
+# （见 apps/api/.gitignore 的 `/src/generated/prisma`），tsup 打包时对
+# `import ... from '../generated/prisma/client'` 是纯粹的相对路径解析，构建前如果
+# 这个目录不存在会直接报 "Could not resolve" 并让整个构建失败——这才是 CI 里
+# apps/api 构建持续失败的真正根因（之前误判为 esbuild 子进程崩溃/网络抖动，是因为
+# 只看到了堆栈尾部，没看到上方 "Error: Build failed with 8 errors" 那行真正的错误
+# 信息；本地一直能构建成功，是因为本机此前手动跑过 `prisma generate`，产物残留在
+# 磁盘上被 `COPY . .` 顺带带进了镜像，掩盖了这个问题）。`generate:prisma` 只需要
+# schema 文件（已提交）就能跑，不需要连接真实数据库、不需要 DATABASE_URL。
+RUN pnpm --filter=@app/api run generate:prisma
+RUN pnpm --filter=@luhanxin/tiptap-editor... --filter=@app/api... run build
 
 FROM base AS runtime
 ENV NODE_ENV=production

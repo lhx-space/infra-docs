@@ -23,6 +23,12 @@ jobs:
           node-version-file: '.nvmrc'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # apps/api 的 src/generated/prisma 是 `prisma generate` 的产物，按约定不提交进仓库
+      # （见 apps/api/.gitignore），typecheck/build 都会 import 这个目录下的类型/客户端，
+      # CI 是全新 checkout，没有这份产物必然失败——本地长期能跑通只是因为开发机上手动
+      # 生成过一次、残留在磁盘上，掩盖了这个问题（同样的根因也出现在 docker job 的
+      # apps/api 镜像构建里，见 apps/api/Dockerfile 对应的这一步）。
+      - run: pnpm --filter=@app/api run generate:prisma
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm build
