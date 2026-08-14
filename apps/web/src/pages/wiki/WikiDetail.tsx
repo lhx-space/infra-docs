@@ -62,6 +62,10 @@ export default function WikiDetail() {
   const tree = buildDocumentTree(documents);
 
   async function handleCreate(): Promise<void> {
+    // wikiId 在这里理应必定存在（组件顶部已经 `if (!wikiId) return null` 提前退出），
+    // 但这个 narrowing 不会跨越嵌套函数边界传递给 TS——嵌套 function 是延迟调用的闭包，
+    // TS 无法保证外部变量到实际调用时刻仍是同一个窄化后的值，因此在这里本地再判断一次。
+    if (!wikiId) return;
     try {
       const document = await createDocument(wikiId, {});
       navigate(`/wiki/${wikiId}/documents/${document.id}`);

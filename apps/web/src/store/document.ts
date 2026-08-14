@@ -10,7 +10,7 @@ import * as documentService from '@/services/document';
 import type {LinkPreviewResult} from '@/services/link-preview';
 import * as linkPreviewService from '@/services/link-preview';
 import * as uploadService from '@/services/upload';
-import type {VideoStatusResult, VideoUploadResult} from '@/services/video';
+import type {UploadVideoResult, VideoStatusResult} from '@/services/video';
 import * as videoService from '@/services/video';
 
 export type {CreateDocumentInput, Document, DocumentVersion, UpdateDocumentInput};
@@ -45,7 +45,7 @@ interface DocumentState {
   fetchLinkPreview: (url: string) => Promise<LinkPreviewResult | null>;
   /** 传给 `DocumentEditor` 的 `uploadVideo`/`pollVideoStatus` 回调（见 video-transcoding
    * spec.md），跟图片上传是同一个分工：组件不直接 import services */
-  uploadVideo: (file: File) => Promise<VideoUploadResult>;
+  uploadVideo: (file: File) => Promise<UploadVideoResult>;
   pollVideoStatus: (assetId: string) => Promise<VideoStatusResult>;
 }
 
