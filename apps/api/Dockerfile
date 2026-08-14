@@ -30,7 +30,14 @@ WORKDIR /repo
 FROM base AS build
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter=@luhanxin/tiptap-editor... --filter=@app/api... run build
+# 构建步骤偶尔在 CI（GitHub Actions 的 docker-container buildx driver）里会因为 esbuild
+# 子进程崩溃失败（堆栈落在 esbuild lib/main.js 的 IPC 包解析路径），本地用完全相同的命令
+# 分别在原生 arm64 与 --platform linux/amd64 模拟下均无法复现，怀疑是 runner 资源抖动或
+# 抓取平台二进制时的瞬时网络问题——失败一次后立即重试一次即可恢复，成本远低于排查一个
+# 无法稳定复现的偶发问题；如果重试后依然失败，说明是真实的确定性错误，需要看当时完整的
+# 报错文本（而不是只有堆栈尾部）才能继续定位。
+RUN pnpm --filter=@luhanxin/tiptap-editor... --filter=@app/api... run build \
+  || (echo "build failed, retrying once..." && pnpm --filter=@luhanxin/tiptap-editor... --filter=@app/api... run build)
 
 FROM base AS runtime
 ENV NODE_ENV=production
