@@ -15,6 +15,12 @@ import {ZoomableMedia} from './ZoomableMedia';
  * 一次"，是的话直接取消预览、走双击进编辑，避免双击时先闪一下预览遮罩。只读模式下没有
  * 编辑态可进，单击直接预览，不需要等这个延时。
  */
+/** IntersectionObserver 的视口缓冲边距：取一屏左右的高度，给渲染留出提前量——快速滚动时
+ * 图表在真正进入视口前已经开始渐染，避免用户看到"进入视口那一刻才突然出现"的闪烁（见
+ * system-performance-hardening design.md Risks，倾向容忍极少数快速滚动场景下的短暂占位，
+ * 换取大多数场景下的渲染成本下降）。 */
+const VIEWPORT_BUFFER_MARGIN = '800px 0px';
+
 export function MermaidView({node, updateAttributes, editor}: NodeViewProps) {
   const source = (node.attrs['source'] as string) ?? '';
   const mode = (node.attrs['mode'] as 'editing' | 'display') ?? 'display';
@@ -23,15 +29,38 @@ export function MermaidView({node, updateAttributes, editor}: NodeViewProps) {
   const [svgMarkup, setSvgMarkup] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  // 编辑态始终视为"在视口内"（见 document-editor-performance spec.md「编辑态的 Mermaid
+  // 图表始终渐染」），跳过下面的 IntersectionObserver 判断；展示态默认先不触发渐染，等
+  // IntersectionObserver 首次报告"进入/接近视口"才渲染一次。一旦渲染过，SVG 保留在内存里，
+  // 不会因为之后离开视口而被清空——Mermaid 重渲染成本高、内存占用相对低，跟视频播放资源
+  // 的取舍不是同一类权衡（见 system-performance-hardening design.md 决策 3）。
+  const [hasBeenVisible, setHasBeenVisible] = useState(mode === 'editing');
   const readOnly = !editor.isEditable;
 
   useEffect(() => {
     setDraft(source);
   }, [source]);
 
+  useEffect(() => {
+    if (mode === 'editing' || hasBeenVisible) return;
+    const el = wrapperRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries.some(entry => entry.isIntersecting)) setHasBeenVisible(true);
+      },
+      {rootMargin: VIEWPORT_BUFFER_MARGIN}
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [mode, hasBeenVisible]);
+
   const codeToRender = mode === 'editing' ? draft : source;
+  const shouldRender = mode === 'editing' || hasBeenVisible;
 
   useEffect(() => {
+    if (!shouldRender) return;
     if (!codeToRender.trim()) {
       setSvgMarkup('');
       setError(null);
@@ -57,7 +86,7 @@ export function MermaidView({node, updateAttributes, editor}: NodeViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [codeToRender]);
+  }, [codeToRender, shouldRender]);
 
   useEffect(() => {
     if (!previewOpen) return;
@@ -116,6 +145,7 @@ export function MermaidView({node, updateAttributes, editor}: NodeViewProps) {
     return (
       <>
         <NodeViewWrapper
+          ref={wrapperRef}
           className="doc-editor-mermaid doc-editor-mermaid--display"
           onClick={handleClick}
           onDoubleClick={handleDoubleClick}

@@ -51,6 +51,13 @@
   max-width: 100%;
 }
 
+/* 懒挂载生效期间（图表还没进入视口附近、尚未触发 mermaid.render()）这个容器是空的，
+   给一个最小高度兜底，避免"占位 → 渐染完成"这一刻高度从 0 跳变到实际图表高度（见
+   system-performance-hardening design.md Risks：懒挂载的高度跳动缓解措施）。 */
+.doc-editor-mermaid__preview {
+  min-height: 160px;
+}
+
 .doc-editor-mermaid__placeholder {
   color: var(--doc-editor-fg-muted);
   font-size: 13px;

@@ -6,6 +6,10 @@ import {getActiveVideoStatusPoller} from '../utils/video/video-status-registry';
 const POLL_INTERVAL_MS = 3000;
 /** 播放中鼠标静止超过这个时长后自动隐藏控制条，跟主流播放器（YouTube/B站）体感一致 */
 const CONTROLS_AUTO_HIDE_MS = 2500;
+/** IntersectionObserver 的视口缓冲边距，跟 `MermaidView` 用同一个值——取一屏左右的高度，
+ * 避免刚滚出视口边缘就立刻暂停/销毁播放资源这种过于敏感的体验（见
+ * system-performance-hardening design.md Risks/决策 3）。 */
+const VIEWPORT_BUFFER_MARGIN = '800px 0px';
 
 /** hls.js 里我们实际用到的最小接口，见下方动态 import 处的说明 */
 interface MinimalHlsInstance {
@@ -195,6 +199,33 @@ export function VideoView({node, updateAttributes}: NodeViewProps) {
       hls?.destroy();
     };
   }, [status, hlsUrl, activated]);
+
+  // 已激活播放的视频离开视口后释放已建立的播放资源（见 document-editor-performance
+  // spec.md「视口外的视频不建立播放资源」、system-performance-hardening design.md
+  // 决策 3）：把 `activated` 重置为 false 即可——上面这个 effect 的依赖里包含
+  // `activated`，重置后会自然走它的清理逻辑（`hls?.destroy()`），渲染也会切回未激活的
+  // 封面态（`<video>`/HLS 实例整体从 DOM 卸载），不需要在这里重复销毁逻辑。重新滚动回
+  // 视口后需要用户再点一次播放——这不是遗漏，是有意为之：`.play()` 若不伴随一次真实的
+  // 用户手势会被浏览器自动播放策略拦下（见上面这段 effect 里同样的说明），静默"自动恢复
+  // 播放"反而大概率会失败。只在 `activated` 时才建立观察，未激活的封面态本身已经是零播放
+  // 资源的占位，不需要额外观察。
+  useEffect(() => {
+    if (!activated) return;
+    const el = stageRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      entries => {
+        const entry = entries[0];
+        if (entry && !entry.isIntersecting) {
+          videoRef.current?.pause();
+          setActivated(false);
+        }
+      },
+      {rootMargin: VIEWPORT_BUFFER_MARGIN}
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [activated]);
 
   // 把 <video> 原生事件同步进自定义控制条需要的状态——播放/暂停/进度/时长/静音/
   // 缓冲中，全部以真实媒体元素状态为准，不猜测
