@@ -141,6 +141,14 @@ export const useTeamStore = create<TeamState>((set, get) => ({
 
   redeemInvite: async token => {
     const {teamId} = await teamService.redeemInvite(token);
+    // 兑换成功后立即刷新 `teams`——不这么做的话，Sidebar/TeamSwitcher/SearchDialog
+    // 等常驻组件读到的还是兑换前的旧数组（它们各自的懒加载 effect 只在数组为空时才
+    // fetch，兑换新团队后数组显然非空，不会自己触发），新加入的团队要等用户手动刷
+    // 整页才会出现。用 catch 吞掉刷新本身的失败——兑换这个动作已经成功落库了，
+    // 不该因为紧随其后的一次读请求失败而让整个 redeemInvite 返回失败。
+    await get()
+      .fetchMyTeams()
+      .catch(() => {});
     return teamId;
   }
 }));

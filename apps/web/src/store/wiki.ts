@@ -68,7 +68,7 @@ interface WikiState {
  * Wiki 全局状态：`Sidebar` 和 `WikiList` 页面共享同一份列表数据，避免同样的 `GET /wikis`
  * 被拉两次（见 design.md 决策 7）——`Sidebar` 挂载时若 `wikis` 为空才触发一次 `fetchWikis`。
  */
-export const useWikiStore = create<WikiState>(set => ({
+export const useWikiStore = create<WikiState>((set, get) => ({
   wikis: [],
   loading: false,
 
@@ -147,6 +147,12 @@ export const useWikiStore = create<WikiState>(set => ({
 
   redeemShareLink: async token => {
     const {wikiId} = await shareLinkService.redeemShareLink(token);
+    // 理由跟 store/team.ts 的 redeemInvite 一致：不刷新的话 Sidebar 的 Wiki 分区/
+    // SearchDialog 会一直看不到刚兑换到的这个 Wiki，直到手动刷新整页。用 catch 吞掉
+    // 刷新本身的失败，不影响兑换动作已经成功这个事实。
+    await get()
+      .fetchWikis()
+      .catch(() => {});
     return wikiId;
   },
 
