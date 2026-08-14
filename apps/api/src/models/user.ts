@@ -38,3 +38,12 @@ export function deleteUser(id: string): Promise<User> {
 export function listUsers(): Promise<User[]> {
   return prisma.user.findMany({orderBy: {id: 'asc'}});
 }
+
+/** 批量查用户 + 详情表的 nickname/avatarUrl（见 services/document-version.ts 的
+ * 「历史编辑人列表」用法），不用 `findUserWithProfile` 逐个查——避免 N+1 */
+export function findUsersWithProfileByIds(ids: string[]) {
+  return prisma.user.findMany({
+    where: {id: {in: ids}},
+    include: {profile: true}
+  });
+}

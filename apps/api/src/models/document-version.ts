@@ -58,6 +58,21 @@ export function listVersionsByDocumentId(
   });
 }
 
+/** 历史编辑人列表用（见 services/document-version.ts 的 `listEditors`）：拿到这篇
+ * 文档曾经产生过版本快照的全部作者 id，去重；不带 orderBy/分页，量级是"某篇文档的
+ * 版本记录数"，不会很大 */
+export async function listDistinctEditorIds(
+  documentId: string,
+  client: Client = prisma
+): Promise<string[]> {
+  const rows = await client.documentVersion.findMany({
+    where: {documentId},
+    distinct: ['createdBy'],
+    select: {createdBy: true}
+  });
+  return rows.map(row => row.createdBy);
+}
+
 export function findVersionById(
   id: string,
   client: Client = prisma

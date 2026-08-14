@@ -37,6 +37,12 @@ export interface UpdateDocumentInput {
   order?: number;
 }
 
+export interface DocumentEditor {
+  id: string;
+  username: string;
+  avatarUrl: string | null;
+}
+
 /**
  * 对 `/wikis/:wikiId/documents` 系列接口的薄封装，风格对齐 `services/wiki.ts`：只负责
  * "发请求、拿结果"，不做错误码翻译（翻译交给调用方 `store/document.ts`），不依赖 zustand。
@@ -85,4 +91,12 @@ export function restoreVersion(
   return http.post<{document: Document}>(
     `/wikis/${wikiId}/documents/${documentId}/versions/${versionId}/restore`
   );
+}
+
+/** 曾经编辑过这篇文档的人（见后端 `listEditorsHandler`），用于标题旁展示历史编辑人 */
+export function listEditors(
+  wikiId: string,
+  documentId: string
+): Promise<{editors: DocumentEditor[]}> {
+  return http.get<{editors: DocumentEditor[]}>(`/wikis/${wikiId}/documents/${documentId}/editors`);
 }

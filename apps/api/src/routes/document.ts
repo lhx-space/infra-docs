@@ -6,7 +6,11 @@ import {
   listDocumentsHandler,
   updateDocumentHandler
 } from '../handlers/document';
-import {listVersionsHandler, restoreVersionHandler} from '../handlers/document-version';
+import {
+  listEditorsHandler,
+  listVersionsHandler,
+  restoreVersionHandler
+} from '../handlers/document-version';
 import {requireAuth} from '../middlewares/require-auth';
 import {requireWikiRole} from '../middlewares/require-wiki-role';
 
@@ -42,4 +46,12 @@ documentRouter.post(
   '/wikis/:wikiId/documents/:documentId/versions/:versionId/restore',
   requireWikiRole('OWNER'),
   restoreVersionHandler
+);
+
+// 历史编辑人列表（见 packages/tiptap-editor 「标题旁展示历史编辑人」的体验优化）：
+// 比查看完整版本历史的门槛更低，VIEWER 也能看到"这篇文档大致被谁编辑过"
+documentRouter.get(
+  '/wikis/:wikiId/documents/:documentId/editors',
+  requireWikiRole('VIEWER'),
+  listEditorsHandler
 );

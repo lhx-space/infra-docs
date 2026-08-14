@@ -1,8 +1,6 @@
 import type {NextFunction, Request, Response} from 'express';
 import type {WikiRole} from '../generated/prisma/client';
-import {isTeamOwner} from '../models/team-member';
-import {findWikiById} from '../models/wiki';
-import {findWikiMember} from '../models/wiki-member';
+import {checkWikiAccess} from '../services/wiki-access';
 import {isValidUuid} from '../utils/uuid';
 import {WIKI_ROLE_WEIGHT} from '../utils/wiki-role';
 
@@ -31,6 +29,11 @@ declare global {
  *
  * 命名和实现风格对齐 `require-auth.ts`（`declare global` 扩展 `Express.Request`、
  * 统一的错误响应格式），保持中间件写法一致（见 design.md 决策 2）。
+ *
+ * 实际的判断逻辑（Team OWNER 兜底 + WikiMember 查询）已提取到 `services/wiki-access.ts`
+ * 的 `checkWikiAccess`——这里只负责把结果映射成 HTTP 语义，逻辑本身与 gRPC 的
+ * `AccessControlService.CheckDocumentRole`（见 yjs-realtime-collaboration design.md
+ * 决策 2）共用同一份实现，不重复维护。
  */
 export function requireWikiRole(minRole: WikiRole) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -46,25 +49,18 @@ export function requireWikiRole(minRole: WikiRole) {
       return;
     }
 
-    const wiki = await findWikiById(wikiId);
-    if (!wiki) {
-      res.status(404).json({error: 'not_found'});
+    const access = await checkWikiAccess(wikiId, userId);
+    if (!access.granted) {
+      res.status(access.reason === 'not_found' ? 404 : 403).json({error: access.reason});
       return;
     }
 
-    if (await isTeamOwner(wiki.teamId, userId)) {
-      req.wikiRole = 'OWNER';
-      next();
-      return;
-    }
-
-    const member = await findWikiMember(wikiId, userId);
-    if (!member || WIKI_ROLE_WEIGHT[member.role] < WIKI_ROLE_WEIGHT[minRole]) {
+    if (WIKI_ROLE_WEIGHT[access.role] < WIKI_ROLE_WEIGHT[minRole]) {
       res.status(403).json({error: 'forbidden'});
       return;
     }
 
-    req.wikiRole = member.role;
+    req.wikiRole = access.role;
     next();
   };
 }

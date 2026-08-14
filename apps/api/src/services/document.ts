@@ -250,6 +250,10 @@ export function listVersions(documentId: string): Promise<DocumentVersion[]> {
   return documentVersionService.listVersions(documentId);
 }
 
+export function listEditors(documentId: string): Promise<documentVersionService.DocumentEditor[]> {
+  return documentVersionService.listEditors(documentId);
+}
+
 /**
  * 恢复到某个历史版本：把该版本内容写回当前文档，并把这次恢复本身当成一次新的编辑
  * （复用 `updateDocument` 的版本快照逻辑），不删除恢复目标之后的任何历史版本

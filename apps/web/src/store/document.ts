@@ -3,6 +3,7 @@ import {getCache, offlineCacheKeys, setCache} from '@/lib/offline-cache';
 import type {
   CreateDocumentInput,
   Document,
+  DocumentEditor,
   DocumentVersion,
   UpdateDocumentInput
 } from '@/services/document';
@@ -13,7 +14,7 @@ import * as uploadService from '@/services/upload';
 import type {UploadVideoResult, VideoStatusResult} from '@/services/video';
 import * as videoService from '@/services/video';
 
-export type {CreateDocumentInput, Document, DocumentVersion, UpdateDocumentInput};
+export type {CreateDocumentInput, Document, DocumentEditor, DocumentVersion, UpdateDocumentInput};
 
 interface DocumentState {
   /** 按 wikiId 缓存的文档树（平铺列表，消费方自己按 parentId 组装层级），
@@ -39,6 +40,10 @@ interface DocumentState {
   getDocument: (wikiId: string, documentId: string) => Promise<Document | null>;
   listVersions: (wikiId: string, documentId: string) => Promise<DocumentVersion[]>;
   restoreVersion: (wikiId: string, documentId: string, versionId: string) => Promise<Document>;
+  /** 曾经编辑过这篇文档的人（不要求当前在线），供标题旁展示历史编辑人（见体验优化，
+   * yjs-realtime-collaboration tasks.md 追加项）；失败时静默返回空数组，这只是一个
+   * 锦上添花的展示，不应该因为这一个接口失败影响整个文档打开流程 */
+  listEditors: (wikiId: string, documentId: string) => Promise<DocumentEditor[]>;
   /** 传给 `DocumentEditor` 的 `uploadImage`/`fetchLinkPreview` 回调，风格对齐
    * `store/wiki.ts` 的 `uploadCoverImage`——组件不直接 import services，统一走 store */
   uploadImage: (file: File) => Promise<string>;
@@ -135,6 +140,15 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       }
     }));
     return document;
+  },
+
+  listEditors: async (wikiId, documentId) => {
+    try {
+      const {editors} = await documentService.listEditors(wikiId, documentId);
+      return editors;
+    } catch {
+      return [];
+    }
   },
 
   uploadImage: async file => {

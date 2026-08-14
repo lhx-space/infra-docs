@@ -64,3 +64,25 @@ export async function restoreVersionHandler(
     respondToVersionError(err, res, next);
   }
 }
+
+/** VIEWER 及以上可查看（比查看完整版本历史的权限门槛更低——"谁编辑过"本身不涉及
+ * 具体历史内容，只是一份人名列表），权限由路由上的 requireWikiRole('VIEWER') 前置校验 */
+export async function listEditorsHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const documentId = req.params['documentId'];
+  if (!documentId || !isValidUuid(documentId)) {
+    res.status(404).json({error: 'not_found'});
+    return;
+  }
+
+  try {
+    await documentService.getDocument(req.params['wikiId'] as string, documentId);
+    const editors = await documentService.listEditors(documentId);
+    res.json({editors});
+  } catch (err) {
+    respondToVersionError(err, res, next);
+  }
+}
