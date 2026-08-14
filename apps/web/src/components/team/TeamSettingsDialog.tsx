@@ -23,7 +23,13 @@ const ALL_TABS: Array<{key: TabKey; label: string}> = [
 
 /**
  * 团队设置面板：结构对齐 `WikiSettingsDialog`（Dialog + Tab + 打开时拉一次角色）。
- * Invite Tab 只有 `OWNER` 才展示——生成/失效邀请链接的接口本身就要求 `OWNER`。
+ * Invite Tab 只有「`OWNER` 且不是个人 Team」才展示——个人 Team 的唯一成员本身就是
+ * `OWNER`，如果只按角色判断，会让"我的个人空间"也能生成邀请链接把别人拉进来，
+ * 而个人 Team 的不变量是"只有唯一成员"（见 team-workspace spec.md「团队邀请链接」），
+ * 一旦有人借此加入，还会永久卡在这个 Team 里退不出去（`removeTeamMember` 对个人
+ * Team 一律拒绝退出/移除，不区分是不是真正的所有者）。后端 `createInvite`/`redeemInvite`
+ * 也各自校验了同一条不变量（见 services/team-invite.ts），这里只是让 UI 层面不出现
+ * 一个点了会直接 403 的入口。
  */
 export function TeamSettingsDialog({team, open, onOpenChange}: TeamSettingsDialogProps) {
   const getTeam = useTeamStore(state => state.getTeam);
@@ -44,7 +50,8 @@ export function TeamSettingsDialog({team, open, onOpenChange}: TeamSettingsDialo
   if (!team) return null;
 
   const canManage = role === 'OWNER';
-  const tabs = ALL_TABS.filter(tab => tab.key !== 'invite' || canManage);
+  const canInvite = canManage && !team.isPersonal;
+  const tabs = ALL_TABS.filter(tab => tab.key !== 'invite' || canInvite);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

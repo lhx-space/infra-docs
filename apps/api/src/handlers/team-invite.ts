@@ -17,7 +17,11 @@ function respondToServiceError(err: unknown, res: Response, next: NextFunction):
   next(err);
 }
 
-/** teamId 存在性 + 当前用户是 OWNER 已由 requireTeamRole('OWNER') 中间件校验过 */
+/**
+ * teamId 存在性 + 当前用户是 OWNER 已由 requireTeamRole('OWNER') 中间件校验过；
+ * 是否为个人 Team（不允许生成邀请链接）由 service 层的 createInvite 校验，
+ * 抛出的 TeamInviteError 会经 respondToServiceError 映射成 403。
+ */
 export async function createInviteHandler(
   req: Request,
   res: Response,

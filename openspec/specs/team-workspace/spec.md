@@ -48,25 +48,29 @@ Team 只设 `OWNER`、`MEMBER` 两级角色；仅 `OWNER` 角色 SHALL 能变更
 - **THEN** 系统 MUST 保证最终结果团队仍至少保留一个 `OWNER`，不允许两个请求都成功
 
 ### Requirement: 团队邀请链接
-Team 的 `OWNER` SHALL 能生成邀请链接作为加入该 Team 的唯一途径，不支持按用户名/邮箱精确查找拉人入队；邀请链接 MUST 固定授予 `MEMBER` 角色，不支持直接生成授予 `OWNER` 的链接；创建者可配置是否限定使用次数与过期时间，且 MUST 能随时手动失效一条已生成的链接。
+非个人 Team 的 `OWNER` SHALL 能生成邀请链接作为加入该 Team 的唯一途径，不支持按用户名/邮箱精确查找拉人入队；邀请链接 MUST 固定授予 `MEMBER` 角色，不支持直接生成授予 `OWNER` 的链接；创建者可配置是否限定使用次数与过期时间，且 MUST 能随时手动失效一条已生成的链接。个人 Team MUST 拒绝任何生成邀请链接的请求——个人 Team 的不变量是永远只有唯一成员（其所有者），允许他人加入会破坏这个不变量，且个人 Team 禁止退出/移除成员（见上一条 Requirement），一旦有其他用户借邀请链接加入将永久无法退出。
 
 #### Scenario: 生成不限次数的邀请链接
-- **WHEN** `OWNER` 生成一条邀请链接且不设置使用次数上限
+- **WHEN** 非个人 Team 的 `OWNER` 生成一条邀请链接且不设置使用次数上限
 - **THEN** 系统创建一条 `TeamInvite` 记录，`maxUses` 为空，在过期或被手动失效前可重复使用
 
 #### Scenario: 生成限定次数的邀请链接
-- **WHEN** `OWNER` 生成一条邀请链接并设置使用次数上限为 N
+- **WHEN** 非个人 Team 的 `OWNER` 生成一条邀请链接并设置使用次数上限为 N
 - **THEN** 该链接被使用达到 N 次后，后续兑换请求 MUST 被拒绝
 
 #### Scenario: 手动失效邀请链接
 - **WHEN** `OWNER` 对一条尚未过期的邀请链接执行失效操作
 - **THEN** 该链接立即不可再被兑换，即使未到 `expiresAt`
 
+#### Scenario: 个人 Team 生成邀请链接被拒绝
+- **WHEN** 用户对自己的个人 Team（其 `OWNER` 身份天然满足角色校验）请求生成邀请链接
+- **THEN** 系统返回 `403 forbidden`，不创建任何 `TeamInvite` 记录
+
 ### Requirement: 团队邀请链接的兑换
-已登录用户 SHALL 能使用一条有效的邀请链接加入对应 Team；兑换 MUST 保证幂等——同一用户重复兑换同一条链接不产生重复的 `TeamMember` 记录，也不计入使用次数。
+已登录用户 SHALL 能使用一条有效的邀请链接加入对应 Team；兑换 MUST 保证幂等——同一用户重复兑换同一条链接不产生重复的 `TeamMember` 记录，也不计入使用次数。即使邀请链接所属的 Team 事后被标记/变为个人 Team，兑换 MUST 依然拒绝，不因链接创建时的状态而放行。
 
 #### Scenario: 首次兑换成功
-- **WHEN** 用户使用一条未过期、未达使用上限的邀请链接
+- **WHEN** 用户使用一条未过期、未达使用上限、且所属 Team 非个人的邀请链接
 - **THEN** 系统创建一条 `TeamMember` 记录（`role: MEMBER`）及一条 `TeamInviteRedemption` 记录，用户加入该 Team
 
 #### Scenario: 已是成员重复兑换
@@ -80,6 +84,10 @@ Team 的 `OWNER` SHALL 能生成邀请链接作为加入该 Team 的唯一途径
 #### Scenario: 兑换已达使用上限的链接
 - **WHEN** 用户使用一条已达 `maxUses` 上限的邀请链接
 - **THEN** 系统返回 `410 invite_exhausted`，不加入团队
+
+#### Scenario: 兑换指向个人 Team 的邀请链接被拒绝
+- **WHEN** 用户使用一条邀请链接，其指向的 `teamId` 对应的 Team `isPersonal` 为真
+- **THEN** 系统返回 `403 forbidden`，不加入团队，即使该链接尚未过期、未达使用上限
 
 ### Requirement: 退出团队时的工作区所有权转移
 成员主动退出或被 `OWNER` 移除出 Team 时，系统 MUST 在同一事务内清理其在该 Team 下所有 Wiki 里的 `WikiMember` 记录；若清理前该用户是某个 Wiki 唯一显式的 `OWNER`，系统 MUST 同时将该 Wiki 的 `OWNER` 转移给当前 Team 中最早加入且仍持有 `OWNER` 角色的成员。
