@@ -24,6 +24,13 @@ WORKDIR /repo
 FROM base AS build
 ARG VITE_API_BASE_URL=http://localhost:3000
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+# apps/collab-server 的 WebSocket 地址（同样是编译期常量，见上面 VITE_API_BASE_URL 的
+# 说明）：之前这个 Dockerfile 只声明了 VITE_API_BASE_URL 一个，没有把 VITE_COLLAB_WS_URL
+# 也透传进构建产物——这意味着用这份 Dockerfile 构建出来的镜像，`import.meta.env.VITE_COLLAB_WS_URL`
+# 会是 undefined，实时协同功能整个不可用，是一个预先存在、直到这次排查 docker-compose 网络
+# 配置才发现的真实缺陷（不是本次改动引入的）。
+ARG VITE_COLLAB_WS_URL=ws://localhost:4000/ws
+ENV VITE_COLLAB_WS_URL=${VITE_COLLAB_WS_URL}
 COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter=@luhanxin/tiptap-editor... --filter=@luhanxin/error-monitor... --filter=web... run build

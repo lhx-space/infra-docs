@@ -8,10 +8,19 @@
 # 转码需要系统级 ffmpeg，跟 api 进程共用同一个镜像、只是启动命令不同（见 docker-compose.yml
 # 的 worker service，两者复用同一次构建产物）。
 #
-# 说明：这个 Dockerfile 是本轮新增的（仓库此前没有对应文件），未在本地实际执行过
-# `docker build` 验证（构建耗时较长，且不是本次功能本身验证的关键路径，见 tasks.md 9.4~9.8
-# 的验证范围）。结构基于标准 pnpm workspace 构建流程编写，如果实际构建时报错，需要按报错
-# 信息针对性调整（比如 pnpm 版本、Prisma 生成产物路径等）。
+# 生产构建产物由 tsup 产出（见 openspec/changes/system-performance-hardening design.md
+# 决策 6/7），`api` 服务用 `pm2-runtime` 以 cluster 模式启动（决策 8，见
+# apps/api/ecosystem.config.cjs）——`pm2-runtime` 是 PM2 专为容器场景提供的前台运行模式
+# （不像普通 `pm2 start` 那样 daemonize 出一个分离的守护进程），作为容器 PID 1 能正确转发
+# SIGTERM/SIGINT 信号，`docker-compose.yml` 的 `restart: unless-stopped` 与 PM2 自身的
+# 进程内重启是两层独立、不冲突的机制。`worker` service 在 docker-compose.yml 里用
+# `command: ['node', 'dist/worker.js']` 整体覆盖了这里的 CMD，不经过 PM2/cluster——它的
+# 并发行为由代码里的 `VIDEO_TRANSCODE_CONCURRENCY` 控制，套 cluster 会被实例数隐性放大
+# （见 design.md 决策 8）。
+#
+# 已本地验证：`docker build -f apps/api/Dockerfile .` 能够成功构建，构建产物
+# （`dist/server.js`/`dist/worker.js`）在真实的 Postgres/Redis/MinIO 环境下均可正常启动
+# （gRPC server 监听、Prisma 连接、ffmpeg 探活均通过，见 tasks.md 7.6/8.4 的验证记录）。
 
 FROM node:22-alpine3.20 AS base
 RUN apk add --no-cache ffmpeg
@@ -28,4 +37,4 @@ ENV NODE_ENV=production
 COPY --from=build /repo /repo
 WORKDIR /repo/apps/api
 EXPOSE 3000
-CMD ["node", "dist/server.js"]
+CMD ["npx", "pm2-runtime", "ecosystem.config.cjs"]

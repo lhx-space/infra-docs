@@ -1,15 +1,22 @@
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
-
-const currentDir = path.dirname(fileURLToPath(import.meta.url));
 
 // /protos 是仓库根目录下多个服务共享的 gRPC 契约存放位置（见
 // openspec/changes/yjs-realtime-collaboration/design.md 决策 10），不归属任何单一
 // apps/*，这里用相对路径穿出 apps/api 目录引用它，跟 apps/collab-server/build.rs
 // 引用同一份 .proto 文件的方式对称。
-const PROTO_PATH = path.resolve(currentDir, '../../../../protos/collab/v1/collab.proto');
+//
+// 用 `process.cwd()` 而不是 `import.meta.url` 计算这个路径（见
+// openspec/changes/system-performance-hardening design.md 决策 6/7）：生产构建换成
+// 打包器（tsup）后，这个模块会被内联进 `dist/server.js`/`dist/worker.js`，`import.meta.url`
+// 在打包后指向的是产物文件本身的位置，不再是这份源码原本所在的 `src/grpc/` 目录，基于它
+// 反推的相对路径在打包后会算错。`process.cwd()` 更可靠——本地开发（`tsx watch`）、生产
+// 运行（`node dist/server.js`，`Dockerfile` 里 `WORKDIR /repo/apps/api`）、
+// `scripts/verify-grpc-proto.ts`（`pnpm --filter=@app/api verify:grpc-proto` 或直接在
+// `apps/api` 目录下用 tsx 跑）这三条路径，进程的 cwd 都保证是 `apps/api/` 目录，不随
+// 构建方式或调用入口变化。
+const PROTO_PATH = path.resolve(process.cwd(), '../../protos/collab/v1/collab.proto');
 
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
   keepCase: false,

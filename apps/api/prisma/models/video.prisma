@@ -14,11 +14,11 @@ enum VideoAssetStatus {
 }
 
 model VideoAsset {
-  id     String           @id @default(uuid(7)) @db.Uuid
-  status VideoAssetStatus @default(PROCESSING)
+  id         String           @id @default(uuid(7)) @db.Uuid
+  status     VideoAssetStatus @default(PROCESSING)
   // 目前唯一取值是 "upload"——外部粘贴的 HLS 地址完全在前端本地生成节点，从不经过这张表
   // （见 spec.md「视频插入来源」）。字段为未来可能新增的资产来源预留，本轮不建枚举。
-  sourceType String @default("upload")
+  sourceType String           @default("upload")
 
   // 原始上传文件内容的 sha256（十六进制），供上传前查重；本能力上线前产生的历史记录没有
   // 这个值（`null`），永远不会被去重查找命中，等同于"未追踪"（见 design.md Migration Plan）

@@ -14,6 +14,20 @@ import {
   VIDEO_TRANSCODE_QUEUE_NAME,
   type VideoTranscodeJobData
 } from './queue/video-transcode';
+import {ensureVideoStorageReady} from './services/video-storage';
+
+/**
+ * `videos-raw`/`videos` 这两个 MinIO bucket 原来只在 `server.ts` 启动时确保存在
+ * （`ensureVideoStorageReady`），`worker` 从未调用过——`docker-compose.yml` 里
+ * `api`/`worker` 两个 service 是并行独立启动的，没有 `depends_on` 顺序保证，且即使加了
+ * `depends_on`，也只能保证"容器进程已启动"，不保证 `server.ts` 里那个异步、不 await 的
+ * `ensureVideoStorageReady()` 调用已经跑完——首次冷启动时如果 `worker` 恰好先于 `api`
+ * 完成 bucket 创建就消费到一个转码任务，会直接因为 bucket 不存在而失败。这里让 `worker`
+ * 也在自己启动时确保一遍（跟 `server.ts` 调的是同一个幂等函数：存在则跳过、不存在则
+ * 创建，失败只记录日志不阻塞启动），彻底去掉这个隐性的启动顺序依赖，不管 `api`/`worker`
+ * 谁先启动、甚至单独只起 `worker` 用于本地调试，都不会受影响。
+ */
+void ensureVideoStorageReady();
 
 /**
  * 独立的转码 worker 进程入口（见 design.md 决策 2：不与 HTTP API 共用进程，本地开发/生产

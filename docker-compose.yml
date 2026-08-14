@@ -6,10 +6,24 @@ services:
     ports:
       - '3000:3000'
       # gRPC server 端口（见 yjs-realtime-collaboration design.md 决策 10），只服务
-      # collab-server 的内部调用，跟 3000（HTTP REST）是完全独立的监听。
-      - '4001:4001'
+      # collab-server 的内部调用，跟 3000（HTTP REST）是完全独立的监听。不用 4001
+      # 是因为本机实测会跟 macOS 上 QQ 桌面客户端占用的端口撞车（见 apps/api/src/env.ts
+      # 里 GRPC_PORT 的注释）。
+      - '4011:4011'
     env_file:
       - ./apps/api/.env
+    # `env_file` 里的 `.env` 是面向"本机直接跑 `pnpm dev`/`node dist/server.js`"这种场景
+    # 编写的（`DATABASE_URL`/`REDIS_URL`/`MINIO_ENDPOINT` 都是 `localhost`），在容器网络
+    # 里这些地址指向的是 `api` 容器自己，连不到 `postgres`/`redis`/`minio` 这几个邻居容器
+    # （之前排查 system-performance-hardening 端到端验证时发现的真实缺陷，`docker-compose
+    # up` 这条路径此前跑不起来）。`environment` 在同名 key 上的优先级高于 `env_file`（见
+    # Docker Compose 官方合并顺序），这里只覆盖这三个需要跨容器访问的地址，换成 Compose
+    # 默认网络自带的服务名 DNS（`postgres`/`redis`/`minio`），其余变量（`JWT_SECRET`/
+    # `PORT`/`GRPC_PORT` 等）继续从 `.env` 读，不需要在这里重复维护。
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-yjs-docs}?schema=public
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: minio
     depends_on:
       - postgres
       - redis
@@ -17,15 +31,19 @@ services:
     restart: unless-stopped
     profiles: ["full"]
 
-  # 纯静态 SPA（Vite 产物），见 apps/web/Dockerfile 顶部说明。VITE_API_BASE_URL 是编译期
-  # 常量，构建完成后固化进产物，这里通过 build.args 传入——换 API 地址需要重新 build，
-  # 不是运行时环境变量能解决的（跟 api/worker/collab-server 几个服务不同）。
+  # 纯静态 SPA（Vite 产物），见 apps/web/Dockerfile 顶部说明。VITE_API_BASE_URL/
+  # VITE_COLLAB_WS_URL 都是编译期常量，构建完成后固化进产物，这里通过 build.args 传入——
+  # 换地址需要重新 build，不是运行时环境变量能解决的（跟 api/worker/collab-server 几个
+  # 服务不同）。两者都保持指向 `localhost`（默认值）而不是服务名——跟 api/worker/
+  # collab-server 那几个不一样，这两个地址是给*浏览器*用的（浏览器运行在宿主机上，
+  # 不在 docker 网络里面，只能通过发布出来的宿主机端口访问），不能换成容器服务名。
   web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000}
+        VITE_COLLAB_WS_URL: ${VITE_COLLAB_WS_URL:-ws://localhost:4000/ws}
     ports:
       - '5173:80'
     depends_on:
@@ -44,6 +62,11 @@ services:
     command: ['node', 'dist/worker.js']
     env_file:
       - ./apps/api/.env
+    # 跟上面 `api` service 同样的原因、同样的修复方式，见那边的注释。
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-yjs-docs}?schema=public
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: minio
     depends_on:
       - postgres
       - redis
@@ -63,6 +86,11 @@ services:
       - '4000:4000'
     env_file:
       - ./apps/collab-server/.env
+    # 跟上面 `api`/`worker` 同样的原因：`.env` 里的 `DATABASE_URL`/`API_GRPC_ADDR` 是面向
+    # 本机直接跑 `cargo run` 编写的（`localhost`/`127.0.0.1`），容器网络里换成服务名。
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-yjs-docs}
+      API_GRPC_ADDR: http://api:4011
     depends_on:
       - postgres
       - api

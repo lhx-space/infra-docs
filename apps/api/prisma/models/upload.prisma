@@ -7,14 +7,14 @@
 // 设计上不绑定"covers"这一个具体 bucket（字段里带 `bucket`），为未来其他上传场景复用留了
 // 空间，但本轮唯一消费方仍然只有图片上传（见 design.md 决策 2）。
 model UploadedObject {
-  id       String @id @default(uuid(7)) @db.Uuid
-  sha256   String @unique
-  url      String @unique
-  bucket   String
+  id        String @id @default(uuid(7)) @db.Uuid
+  sha256    String @unique
+  url       String @unique
+  bucket    String
   objectKey String
-  size     Int
-  mimeType String
-  refCount Int    @default(1)
+  size      Int
+  mimeType  String
+  refCount  Int    @default(1)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
