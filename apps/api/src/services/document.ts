@@ -17,6 +17,7 @@ import {countVideoAssetOccurrences, diffVideoAssetOccurrences} from '../utils/vi
 import * as documentVersionService from './document-version';
 import {acquireImageRef, releaseImageRef} from './storage';
 import {acquireVideoRef, releaseVideoRef} from './video';
+import {contentJsonToYjsState, yjsStateToContentJson} from './yjs-content';
 
 /** 风格对齐 services/wiki.ts 的 WikiError：status + message，handler 层统一映射成 HTTP 状态码 */
 export class DocumentError extends Error {
@@ -142,6 +143,14 @@ export async function updateDocument(
 ): Promise<Document> {
   const existing = await getDocument(wikiId, documentId);
 
+  // 一旦文档完成协同初始化（yjsState 非空），正文内容只能通过实时协同连接更新，旧的
+  // REST 整篇覆盖写路径必须拒绝，避免两条写路径并存导致覆盖/丢失（见
+  // yjs-realtime-collaboration design.md 决策 9、specs/realtime-collaboration「已启用
+  // 协同的文档拒绝旧的整篇覆盖写入」）。标题不受此限制，继续走这里。
+  if (input.content !== undefined && existing.yjsState !== null) {
+    throw new DocumentError(409, 'collaboration_enabled');
+  }
+
   if (input.parentId !== undefined && input.parentId === documentId) {
     throw new DocumentError(400, 'invalid_input');
   }
@@ -260,4 +269,67 @@ export async function restoreVersion(
     {title: version.title, content: version.content},
     userId
   );
+}
+
+/**
+ * 供 gRPC `DocumentSyncService.GetDocumentContent` 使用（见 yjs-realtime-collaboration
+ * design.md 决策 6）：`apps/collab-server` 在存量文档首次被协同打开、`yjsState` 仍为空时，
+ * 调用这个方法取回"由当前 `content` 转换出的初始 Yjs 二进制状态"——转换本身（ProseMirror
+ * JSON → Yjs）在这里用 `y-prosemirror` 完成（见决策 5 的实现阶段修正说明），
+ * `collab-server` 拿到后直接反序列化使用，不需要理解 ProseMirror 的具体结构。不做任何
+ * 权限校验——调用这个方法之前，`collab-server` 已经在连接建立阶段通过 `CheckDocumentRole`
+ * 校验过权限（见决策 4），这里只是内部服务间调用，不重复校验。
+ */
+export async function getDocumentContentForCollab(documentId: string): Promise<Buffer> {
+  const doc = await findDocumentById(documentId);
+  if (!doc) {
+    throw new DocumentError(404, 'not_found');
+  }
+  return contentJsonToYjsState(doc.content);
+}
+
+/**
+ * 供 gRPC `DocumentSyncService.SyncDocumentContent` 使用（见 design.md 决策 5/7）：
+ * `collab-server` 周期性持久化时传来某一时刻完整的 Yjs 状态，这里先用 `y-prosemirror`
+ * 还原出对应的 ProseMirror JSON（见决策 5 的实现阶段修正说明），再同步 `content`/
+ * `searchText`，并在内容确实变化时按既有"编辑会话聚合"规则追加/更新一条版本快照
+ * （复用 `snapshotVersion`，不重新实现，见 document-versioning spec.md）。
+ *
+ * `lastEditorId` 为空字符串（房间从未记录到任何写入方，理论上不应发生）时只同步
+ * `content`/`searchText`，跳过版本快照——`DocumentVersion.createdBy` 是必填字段，
+ * 没有明确作者的情况下不应该新建一条版本记录。
+ *
+ * 内容是否变化的判断用字符串比较（两侧都来自同一套 JSON 序列化路径，结构化 deep-equal
+ * 在这里没有必要引入额外依赖）；调用方（`collab-server`）不需要自己维护"上一次内容是
+ * 什么"的状态，这条判断只在这里做一次。
+ */
+export async function syncContentFromCollab(
+  documentId: string,
+  yjsState: Uint8Array,
+  lastEditorId: string
+): Promise<{contentChanged: boolean}> {
+  const existing = await findDocumentById(documentId);
+  if (!existing) {
+    throw new DocumentError(404, 'not_found');
+  }
+
+  const parsedContent = yjsStateToContentJson(yjsState) as Prisma.InputJsonValue;
+  const contentChanged = JSON.stringify(existing.content) !== JSON.stringify(parsedContent);
+  if (!contentChanged) {
+    return {contentChanged: false};
+  }
+
+  const searchText = extractPlainText(parsedContent);
+  await updateDocumentModel(documentId, {content: parsedContent, searchText});
+
+  if (lastEditorId) {
+    await documentVersionService.snapshotVersion(
+      documentId,
+      existing.title,
+      parsedContent,
+      lastEditorId
+    );
+  }
+
+  return {contentChanged: true};
 }

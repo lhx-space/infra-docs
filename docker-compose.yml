@@ -5,6 +5,9 @@ services:
       dockerfile: apps/api/Dockerfile
     ports:
       - '3000:3000'
+      # gRPC server 端口（见 yjs-realtime-collaboration design.md 决策 10），只服务
+      # collab-server 的内部调用，跟 3000（HTTP REST）是完全独立的监听。
+      - '4001:4001'
     env_file:
       - ./apps/api/.env
     depends_on:

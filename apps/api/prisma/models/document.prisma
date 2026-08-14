@@ -12,6 +12,12 @@ model Document {
   searchText String @default("")
   coverImage String?
   order      Int    @default(0)
+  // Yjs CRDT 二进制状态（`yrs::encode_state_as_update` 编码），由 apps/collab-server
+  // 直接读写，不经过本服务（见 yjs-realtime-collaboration design.md 决策 5）。为空表示
+  // 该文档从未被实时协同打开过，此时 `content` 仍是权威数据；一旦非空，`content` 就
+  // 降级为"物化只读视图"（协同持久化时由 collab-server 通过 gRPC 同步过来，见决策 5/7），
+  // PATCH /documents/:id 的正文更新会被拒绝（见决策 9）。可空、默认 null，向后兼容存量数据。
+  yjsState   Bytes?
 
   wiki     Wiki       @relation(fields: [wikiId], references: [id], onDelete: Cascade)
   // 自引用建树：删除父文档时级联删除全部子文档（递归），见 spec.md「级联删除」

@@ -3,6 +3,9 @@ import {z} from 'zod';
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
+  /** gRPC server 监听端口（见 yjs-realtime-collaboration design.md 决策 10）：与 HTTP
+   * server 完全独立的监听端口，`apps/collab-server`（Rust）作为客户端调用这个地址。 */
+  GRPC_PORT: z.coerce.number().int().positive().default(4001),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url().default('redis://localhost:6379'),

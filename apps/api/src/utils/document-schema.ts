@@ -12,6 +12,11 @@ import {Node as ProseMirrorNode} from '@tiptap/pm/model';
  */
 const documentSchema: Schema = getSchema(documentEditorExtensions);
 
+/** 供 `services/yjs-content.ts` 复用——ProseMirror JSON ↔ Yjs 二进制的转换（`y-prosemirror`）
+ * 必须用跟服务端内容校验同一份 Schema，否则两处对"合法内容长什么样"的理解可能不一致
+ * （见 yjs-realtime-collaboration design.md 决策 5 的实现阶段修正说明）。 */
+export {documentSchema};
+
 /**
  * 校验提交的内容 JSON 是否完全由编辑器支持的节点/属性组成：用 `Node.fromJSON` 尝试按这份
  * `Schema` 还原成 ProseMirror 文档树，还原失败（未识别的节点类型/非法属性/结构不合法）说明

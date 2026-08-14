@@ -26,6 +26,11 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm build
+      - name: Verify /protos/collab/v1/collab.proto
+        # 见 apps/api/scripts/verify-grpc-proto.ts 顶部注释：apps/api 侧用动态
+        # proto-loader，没有需要跟 .proto 同步的生成产物，改成直接加载校验服务/方法定义
+        # 是否齐全（对应 tasks.md 6.4 的实现阶段修正）。
+        run: pnpm --filter=@app/api verify:grpc-proto
 
   # ===== Rust 检查 (apps/collab-server，见 openspec/changes/yjs-realtime-collaboration) =====
   rust:

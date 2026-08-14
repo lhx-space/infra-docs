@@ -17,9 +17,12 @@
     "generate:prisma": "npx prisma generate",
     "migrate:prisma": "npx prisma migrate dev",
     "migrate:deploy:prisma": "npx prisma migrate deploy",
-    "backfill:team-workspace": "tsx --env-file=.env scripts/backfill-team-workspace.ts"
+    "backfill:team-workspace": "tsx --env-file=.env scripts/backfill-team-workspace.ts",
+    "verify:grpc-proto": "tsx scripts/verify-grpc-proto.ts"
   },
   "dependencies": {
+    "@grpc/grpc-js": "^1.14.4",
+    "@grpc/proto-loader": "^0.8.1",
     "@luhanxin/tiptap-editor": "workspace:*",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
@@ -42,6 +45,8 @@
     "pino": "^9.6.0",
     "pino-http": "^10.4.0",
     "sharp": "^0.35.3",
+    "y-prosemirror": "^1.3.7",
+    "yjs": "^13.6.32",
     "zod": "^3.24.0"
   },
   "devDependencies": {
