@@ -1,0 +1,51 @@
+# apps/web 的 Caddy 版本静态服务配置——跟 nginx.conf 是同一份需求的两种写法，二选一即可
+# （对应 apps/web/Dockerfile 里可切换的 runtime 阶段，见该文件顶部注释）。
+#
+# 用 Caddy 相对 nginx 的差异点：
+# - gzip/zstd 默认全部自动开启（`encode` 指令按 Accept-Encoding 协商，不需要像
+#   nginx 那样分别声明 gzip_types）。
+# - 配置本身声明式、行数少，适合这种"纯静态 SPA + 缓存策略"的简单场景。
+# - 本地已经缓存了 caddy:2-alpine 镜像（无需额外拉取新镜像层）。
+#
+# 注意：`respond`/`try_files`/`file_server` 放进同一个 `route {}` 块里显式排序——
+# Caddyfile 的指令默认不是按文件里写的顺序执行的，而是按内部固定优先级（`try_files`
+# 天然排在 `handle`/`respond` 之前），如果不用 `route` 强制排序，`/healthz` 会被
+# `try_files` 提前重写成 `/index.html`，永远拿不到期望的 "ok" 响应（实测验证过这个坑）。
+
+:80 {
+	root * /usr/share/nginx/html
+	encode zstd gzip
+
+	# 不暴露 Server 头里的 Caddy 版本信息
+	header -Server
+
+	# 安全响应头，跟 nginx.conf 保持一致
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+
+	# Vite 产物：带 content hash 的静态资源，一年不过期 + immutable
+	@hashedAssets path /assets/*
+	header @hashedAssets Cache-Control "public, max-age=31536000, immutable"
+
+	# 不带 hash 的静态文件：允许缓存但周期短一些
+	@staticFiles path *.ico *.png *.jpg *.jpeg *.gif *.webp *.avif *.svg *.woff *.woff2 *.ttf *.eot
+	header @staticFiles Cache-Control "public, max-age=604800"
+
+	# index.html 永远不缓存（唯一引用当次构建 hash 文件名的入口）
+	@indexHtml path /index.html /
+	header @indexHtml Cache-Control "no-cache, no-store, must-revalidate"
+
+	route {
+		# 容器健康检查：必须排在 try_files 前面显式声明，否则会被 try_files 抢先
+		# 重写到 /index.html
+		respond /healthz "ok" 200
+
+		# SPA 路由兜底：找不到对应静态文件时回退到 index.html，交给 react-router-dom 处理
+		try_files {path} /index.html
+		file_server
+	}
+}

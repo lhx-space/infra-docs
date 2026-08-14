@@ -14,6 +14,22 @@ services:
     restart: unless-stopped
     profiles: ["full"]
 
+  # 纯静态 SPA（Vite 产物），见 apps/web/Dockerfile 顶部说明。VITE_API_BASE_URL 是编译期
+  # 常量，构建完成后固化进产物，这里通过 build.args 传入——换 API 地址需要重新 build，
+  # 不是运行时环境变量能解决的（跟 api/worker/collab-server 几个服务不同）。
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3000}
+    ports:
+      - '5173:80'
+    depends_on:
+      - api
+    restart: unless-stopped
+    profiles: ["full"]
+
   # 视频转码 worker（见 video-hls-embed design.md 决策 2）：跟 api 复用同一个镜像/构建产物，
   # 只是启动命令换成 src/worker.ts 编译后的产物——不与 HTTP API 共用进程，避免 ffmpeg 转码
   # 这种 CPU 密集任务拖慢请求处理。同样需要 ffmpeg（已在 Dockerfile 里装好）与 Redis（BullMQ
