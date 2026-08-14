@@ -1,5 +1,5 @@
 /**
- * 图片样式：限宽展示、选中态反馈、双击全屏预览遮罩、上传中占位。
+ * 图片样式：限宽展示、选中态反馈、双击全屏预览遮罩、上传中占位、缩放手柄、水平对齐。
  * 从 index.css 拆分而来（见 tiptap-editor-file-organization design.md 决策 2），
  * 选择器与规则内容逐字未变，只是物理位置搬到独立文件。
  *
@@ -18,10 +18,96 @@
   cursor: pointer;
 }
 
-/* 图片被 ProseMirror 选中时的视觉反馈——原来完全没有任何样式，选中后在视图上根本看不出来 */
-.ProseMirror-selectednode.doc-editor-image {
+/*
+ * 图片缩放手柄（见 utils/extensions.ts 里 Image 的 resize 配置）：@tiptap/extension-image
+ * 内置的 ResizableNodeView 会在 img 外面包一层 [data-resize-container] 套
+ * [data-resize-wrapper]，四个角再各挂一个 [data-resize-handle="方向"] 手柄。它没有透出
+ * 自定义 className 的配置项（Image.configure 只转发 directions、minWidth、minHeight、
+ * alwaysPreserveAspectRatio 给内部实现），只能靠这几个它自己写死的 data 属性选择器来
+ * 定制外观——不是我们主动选的写法，是这个内置实现唯一开放的定制入口。
+ *
+ * 手柄默认透明不可见：attachHandles 在节点挂载时就把手柄插入了 DOM（不是按需创建），
+ * 常驻显示的话正文里每张图片都会挂着 4 个小方块，视觉噪音太大——只在选中这张图或鼠标
+ * 悬停时才显示，跟大多数所见即所得编辑器的图片缩放手感一致。
+ */
+[data-resize-container][data-node='image'] {
+  max-width: 100%;
+
+  /* 默认贴左（等同没有这条规则时的原始效果），具体值由下面 :has() 根据 <img> 的
+     data-align 属性覆盖——见「水平对齐」一节 */
+  justify-content: flex-start;
+}
+
+/* 选中态的高亮框现在要挂在这个最外层容器上，不能再是 `<img>` 本身——ResizableNodeView
+   把 ProseMirror-selectednode 加到它自己返回的最外层 dom 节点（即这个 container），
+   不是内部的 img 元素 */
+[data-resize-container][data-node='image'].ProseMirror-selectednode {
   outline: 2px solid var(--doc-editor-accent);
   outline-offset: 2px;
+  border-radius: var(--doc-editor-radius);
+}
+
+[data-resize-wrapper] {
+  max-width: 100%;
+}
+
+/* 手柄外观：白底 + 主题色描边的小圆点，带一点投影——之前用纯色实心方块在浅色/深色图片
+   上都显得很生硬（用户反馈"好丑"），换成这种更接近 Notion/飞书的描边圆点后，无论盖在
+   什么颜色的图片上都能看清、也不会像一块补丁糊在图上 */
+[data-resize-handle] {
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid var(--doc-editor-accent);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 35%);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+[data-resize-handle='top-left'] {
+  margin: -5px 0 0 -5px;
+  cursor: nwse-resize;
+}
+
+[data-resize-handle='top-right'] {
+  margin: -5px -5px 0 0;
+  cursor: nesw-resize;
+}
+
+[data-resize-handle='bottom-left'] {
+  margin: 0 0 -5px -5px;
+  cursor: nesw-resize;
+}
+
+[data-resize-handle='bottom-right'] {
+  margin: 0 -5px -5px 0;
+  cursor: nwse-resize;
+}
+
+[data-resize-wrapper]:hover [data-resize-handle],
+[data-resize-container].ProseMirror-selectednode [data-resize-handle],
+[data-resize-container][data-resize-state='true'] [data-resize-handle] {
+  opacity: 1;
+}
+
+/*
+ * 水平对齐（见 ImageBubbleMenu.tsx 选中图片时弹出的贴左/居中/贴右三个按钮，对应
+ * utils/extensions.ts 里新增的 `align` 节点属性，渲染成 <img data-align="...">）。
+ *
+ * ResizableNodeView 生成的外层 [data-resize-container] 拿不到自定义 class/属性（同上
+ * 一段注释），没法直接在容器本身写 data-align——用 :has() 反向读它内部这个 <img> 的
+ * data-align 值来决定这一整行的对齐方式。container 本身默认块级铺满内容列宽度，
+ * wrapper/img 仍然维持贴合图片实际尺寸不被拉伸，justify-content 只是在这一行里把
+ * 「图片实际大小的那个盒子」推到左/中/右，缩放手柄依旧精确贴在图片四角上，两者不冲突。
+ */
+[data-resize-container][data-node='image']:has(img[data-align='center']) {
+  justify-content: center;
+}
+
+[data-resize-container][data-node='image']:has(img[data-align='right']) {
+  justify-content: flex-end;
 }
 
 /* 双击图片/Mermaid 图表后的全屏预览遮罩（见 document-editor spec.md「图片/图表双击预览」），
@@ -58,6 +144,16 @@
 .doc-editor-image-preview .doc-editor-mermaid-preview svg {
   max-width: 100%;
   height: auto;
+}
+
+/* 图片选中态悬浮工具栏（见 components/ImageBubbleMenu.tsx）：跟文字悬浮工具栏
+   （.doc-editor-bubble-menu，见 index.css）共用同一套外观基础样式，这里只覆盖
+   按钮的图标排版——不需要文字悬浮工具栏那种等宽字母按钮的间距 */
+.doc-editor-image-bubble-menu button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
 }
 
 /* 手势缩放容器（见 components/ZoomableMedia.tsx）：`touch-action: none` 是必须的——

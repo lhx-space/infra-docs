@@ -10,6 +10,15 @@ export {
   type SaveStatus
 } from './components/DocumentEditor';
 export {DocumentOutline} from './components/DocumentOutline';
+export type {
+  CollaborationConfig,
+  CollaborationProvider,
+  CollaborationStatus,
+  CollaborationUser,
+  CollaboratorInfo,
+  HistoricalEditorInfo
+} from './utils/collaboration/collaboration-types';
+export {Y_XML_FRAGMENT_FIELD} from './utils/collaboration/collaboration-types';
 export {documentEditorExtensions} from './utils/extensions';
 export type {LinkPreviewResult} from './utils/link-preview/link-preview-registry';
 export type {VideoStatusResult} from './utils/video/video-status-registry';

@@ -22,6 +22,8 @@
 @import './link-preview.css';
 @import './image.css';
 @import './video.css';
+@import './table.css';
+@import './collaboration.css';
 
 :root {
   --doc-editor-fg: var(--foreground, #1f2328);

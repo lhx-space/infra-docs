@@ -1,0 +1,89 @@
+/**
+ * 实时协同相关样式：协作者光标/选区标记（`CollaborationCaret` 扩展）+ 在线协作者
+ * 头像列表（见 yjs-realtime-collaboration specs/realtime-collaboration「协作者
+ * Presence 展示」）。用户区分色（`color`）逐个用户不同，由 JS 侧内联到元素上
+ * （见 utils/collaboration/caret-render.ts），这里只定义结构/间距等跟主题一致的部分。
+ */
+
+.doc-editor-caret {
+  position: relative;
+  border-left: 1px solid;
+  margin-left: -1px;
+  margin-right: -1px;
+  word-break: normal;
+  pointer-events: none;
+}
+
+.doc-editor-caret__label {
+  position: absolute;
+  top: -1.4em;
+  left: -1px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #fff;
+  white-space: nowrap;
+  border-radius: 3px;
+  padding: 0 4px;
+  user-select: none;
+}
+
+.doc-editor-caret-selection {
+  border-radius: 2px;
+}
+
+.doc-editor__collaborators {
+  display: flex;
+  align-items: center;
+
+  /* 头像堆叠的重叠效果由下面 .doc-editor__collaborator-avatar 的负 margin-left 实现——
+     gap 不支持负值，这里不需要设置 */
+}
+
+/* 历史编辑人：展示在标题下方，"头像 + 用户名"的横向列表（跟工具栏那一串纯头像堆叠
+ * 的在线协作者是两种不同的展示，见 `DocumentEditor` 的 `historicalEditors` prop）。
+ * `list-style: none` + `ul` 语义化标签，纯粹为了 aria-label 能被读屏软件识别成一组。 */
+.doc-editor__history-editors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  list-style: none;
+  margin: 0 0 1.2em;
+  padding: 0;
+}
+
+.doc-editor__history-editor {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.doc-editor__history-editor-name {
+  font-size: 12px;
+  color: var(--doc-editor-fg-muted);
+}
+
+.doc-editor__collaborator-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--doc-editor-bg);
+  margin-left: -6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  object-fit: cover;
+}
+
+.doc-editor__collaborator-avatar:first-child {
+  margin-left: 0;
+}
+
+.doc-editor__collaborator-avatar--muted {
+  opacity: 0.55;
+  filter: grayscale(35%);
+}

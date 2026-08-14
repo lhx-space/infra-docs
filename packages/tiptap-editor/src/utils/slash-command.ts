@@ -83,6 +83,18 @@ export const SLASH_COMMAND_ITEMS: SlashCommandItem[] = [
     run: (editor, range) => editor.chain().focus().deleteRange(range).setHorizontalRule().run()
   },
   {
+    title: '表格',
+    description: '插入一个 3×3 的表格，可再增删行列',
+    keywords: ['table', '表格'],
+    run: (editor, range) =>
+      editor
+        .chain()
+        .focus()
+        .deleteRange(range)
+        .insertTable({rows: 3, cols: 3, withHeaderRow: true})
+        .run()
+  },
+  {
     title: 'Mermaid 图表',
     description: '插入一个可编辑的 Mermaid 图表',
     keywords: ['mermaid', 'diagram', '图表', '流程图'],

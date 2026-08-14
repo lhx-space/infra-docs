@@ -1,0 +1,102 @@
+/**
+ * 表格样式：边框/斑马纹、表头样式、单元格选中态、列宽拖拽手柄、表格内悬浮工具栏
+ * （见 components/TableBubbleMenu.tsx）。
+ *
+ * `.selectedCell`/`.column-resize-handle`/`.resize-cursor` 这三个 class 名不是我们起的，
+ * 是 `prosemirror-tables`（`@tiptap/extension-table` 底层依赖）内部写死并直接挂到 DOM 上
+ * 的——同 image.css 里 `[data-resize-*]` 的情况一样，不是我们主动选的写法，是这个库开放
+ * 出来的唯一定制入口，照抄它的类名往上加样式即可。
+ */
+
+.doc-editor-table {
+  width: 100%;
+  margin: 0.8em 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.doc-editor-table-cell,
+.doc-editor-table-header {
+  position: relative;
+  min-width: 25px;
+  border: 1px solid var(--doc-editor-border);
+  padding: 6px 10px;
+  vertical-align: top;
+}
+
+.doc-editor-table-cell > *,
+.doc-editor-table-header > * {
+  margin: 0;
+}
+
+.doc-editor-table-header {
+  background: var(--doc-editor-surface);
+  font-weight: 600;
+  text-align: left;
+}
+
+/* 斑马纹：不看表头单独算 nth-child，直接看正文行的奇偶——表头永远是第一行，天然错开 */
+.doc-editor-table tr:nth-child(even) .doc-editor-table-cell {
+  background: color-mix(in srgb, var(--doc-editor-fg) 3%, transparent);
+}
+
+/* 单元格拖蓝选中（`prosemirror-tables` 的 CellSelection，跨单元格框选时每个被圈进去的
+   单元格都会被打上这个 class）：用半透明蒙层叠加而不是改背景色，这样跟斑马纹/表头背景
+   叠加时颜色始终是"原色加深一点"，不会因为选区跨表头+正文而出现两种色调 */
+.doc-editor-table .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--doc-editor-accent) 18%, transparent);
+  pointer-events: none;
+}
+
+/* 列宽拖拽手柄：默认是一条几乎看不见的竖线，鼠标靠近列边界时才亮起主题色，跟大多数
+   表格编辑器的列宽拖拽手感一致 */
+.column-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: -2px;
+  right: -2px;
+  width: 4px;
+  background: transparent;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.doc-editor-table-cell:hover .column-resize-handle,
+.doc-editor-table-header:hover .column-resize-handle {
+  background: var(--doc-editor-accent);
+  opacity: 0.4;
+}
+
+/* 拖拽列宽时整个编辑器区域切换成列宽调整光标（`prosemirror-tables` 拖拽期间会把这个
+   class 打到 ProseMirror 根节点上），不加的话浏览器默认光标在拖拽过程中看起来很生硬 */
+.resize-cursor {
+  cursor: col-resize;
+}
+
+/* 表格内悬浮工具栏（见 components/TableBubbleMenu.tsx）：跟文字/图片悬浮工具栏共用
+   .doc-editor-bubble-menu 的外观基础（背景/边框/阴影，见 index.css），这里只补充
+   分组/分隔线的排版——按钮数量比另外两个工具栏多，用分组 + 分隔线区分「行操作」/
+   「列操作」/「整表操作」三类，避免一排按钮糊在一起分不清功能 */
+.doc-editor-table-bubble-menu {
+  gap: 4px;
+}
+
+.doc-editor-table-bubble-menu__group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.doc-editor-table-bubble-menu__divider {
+  align-self: stretch;
+  width: 1px;
+  margin: 2px;
+  background: var(--doc-editor-border);
+}
+
+.doc-editor-table-bubble-menu__delete-table {
+  color: var(--doc-editor-danger);
+}

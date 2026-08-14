@@ -1,6 +1,7 @@
-import {DocumentEditor, type SaveStatus} from '@luhanxin/tiptap-editor';
+import type {HistoricalEditorInfo} from '@luhanxin/tiptap-editor';
+import {DocumentEditor} from '@luhanxin/tiptap-editor';
 import {History, Trash2} from 'lucide-react';
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
 import {toast} from 'sonner';
 import {ConfirmDialog} from '@/components/shared/ConfirmDialog';
@@ -8,22 +9,34 @@ import {EmptyState} from '@/components/shared/EmptyState';
 import {PageHeader} from '@/components/shell/PageHeaderContext';
 import {Button} from '@/components/ui/button';
 import {VersionHistoryDialog} from '@/components/wiki/VersionHistoryDialog';
+import {useDocumentCollaboration} from '@/hooks/use-document-collaboration';
 import {useOnlineStatus} from '@/hooks/use-online-status';
+import {colorFromUserId} from '@/lib/collaboration-color';
 import {ApiError} from '@/network';
+import {useAuthStore} from '@/store/auth';
 import type {Document} from '@/store/document';
 import {useDocumentStore} from '@/store/document';
+import {useProfileStore} from '@/store/profile';
 import type {WikiRole} from '@/store/wiki';
 import {useWikiStore} from '@/store/wiki';
 
 /**
- * 文档编辑视图：挂载 `DocumentEditor`（大纲导航/全屏/图片上传/链接预览/自动保存均由包内部
- * 提供），本页只负责数据装配（拉取文档 + 角色 + 离线降级）与页面级交互（标题编辑、删除、
- * 版本历史入口）（见 wiki-document/document-editor spec.md）。
+ * 文档编辑视图：挂载 `DocumentEditor`（大纲导航/全屏/图片上传/链接预览均由包内部
+ * 提供），本页负责数据装配（拉取文档元信息 + 角色 + 实时协同连接）与页面级交互
+ * （标题编辑、删除、版本历史入口）（见 wiki-document/document-editor spec.md、
+ * yjs-realtime-collaboration design.md）。
+ *
+ * 正文内容的真源是协同连接驱动的 `Y.Doc`（`useDocumentCollaboration`），不再是
+ * REST `GET /documents/:id` 返回的 `content` 字段——那个字段现在只是"物化只读
+ * 视图"（见 design.md 决策 5），这里仍然拉一次只是为了拿标题/存在性/角色，不用于
+ * 渲染正文。
  */
 export default function DocumentEditorPage() {
   const {wikiId, documentId} = useParams<{wikiId: string; documentId: string}>();
   const navigate = useNavigate();
   const online = useOnlineStatus();
+  const currentUser = useAuthStore(state => state.user);
+  const currentProfile = useProfileStore(state => state.profile);
 
   const getWiki = useWikiStore(state => state.getWiki);
   const getDocument = useDocumentStore(state => state.getDocument);
@@ -33,6 +46,9 @@ export default function DocumentEditorPage() {
   const fetchLinkPreview = useDocumentStore(state => state.fetchLinkPreview);
   const uploadVideo = useDocumentStore(state => state.uploadVideo);
   const pollVideoStatus = useDocumentStore(state => state.pollVideoStatus);
+  const listEditors = useDocumentStore(state => state.listEditors);
+
+  const collaboration = useDocumentCollaboration(documentId);
 
   const [document_, setDocument] = useState<Document | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -41,9 +57,9 @@ export default function DocumentEditorPage() {
   const [fullscreen, setFullscreen] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [, setSaveStatus] = useState<SaveStatus>('idle');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [historicalEditors, setHistoricalEditors] = useState<HistoricalEditorInfo[]>([]);
 
   const titleSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -82,16 +98,29 @@ export default function DocumentEditorPage() {
     };
   }, [wikiId, documentId, online, getWiki, getDocument, reloadKey]);
 
+  // 历史编辑人：跟主数据加载分开、独立一个 effect——这是锦上添花的展示，失败或者慢
+  // 都不应该影响文档主体的加载判断（`listEditors` 内部已经吞掉了错误，见 store/document.ts）
+  useEffect(() => {
+    if (!wikiId || !documentId) return;
+    let cancelled = false;
+    void listEditors(wikiId, documentId).then(editors => {
+      if (cancelled) return;
+      setHistoricalEditors(
+        editors.map(editor => ({
+          id: editor.id,
+          name: editor.username,
+          color: colorFromUserId(editor.id),
+          avatarUrl: editor.avatarUrl
+        }))
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [wikiId, documentId, listEditors]);
+
   const canEdit = role === 'OWNER' || role === 'EDITOR';
   const canRestoreVersion = role === 'OWNER';
-
-  const handleSave = useCallback(
-    async (json: unknown) => {
-      if (!wikiId || !documentId) return;
-      await updateDocument(wikiId, documentId, {content: json});
-    },
-    [wikiId, documentId, updateDocument]
-  );
 
   function handleTitleChange(next: string): void {
     setTitle(next);
@@ -135,7 +164,7 @@ export default function DocumentEditorPage() {
     );
   }
 
-  if (!document_) {
+  if (!document_ || !collaboration || !currentUser) {
     return (
       <div className="flex flex-1 flex-col p-6">
         <PageHeader title="文档" />
@@ -166,7 +195,6 @@ export default function DocumentEditorPage() {
       <div className="min-h-0 flex-1">
         <DocumentEditor
           key={`${documentId}-${reloadKey}`}
-          content={document_.content}
           editable={canEdit}
           offline={!online}
           title={title}
@@ -177,8 +205,18 @@ export default function DocumentEditorPage() {
           uploadVideo={uploadVideo}
           pollVideoStatus={pollVideoStatus}
           onVideoUploadError={message => toast.error(message)}
-          onSave={handleSave}
-          onSaveStatusChange={setSaveStatus}
+          collaboration={{
+            document: collaboration.document,
+            provider: collaboration.provider,
+            user: {
+              name: currentUser.username,
+              color: colorFromUserId(currentUser.id),
+              avatarUrl: currentProfile?.avatarUrl
+            }
+          }}
+          collaborationStatus={collaboration.status}
+          onReconnect={collaboration.reconnect}
+          historicalEditors={historicalEditors}
           fullscreen={fullscreen}
           onFullscreenChange={setFullscreen}
           className="h-full"

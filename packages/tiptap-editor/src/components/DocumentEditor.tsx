@@ -1,8 +1,18 @@
 import {Extension} from '@tiptap/core';
+import {Collaboration} from '@tiptap/extension-collaboration';
+import {CollaborationCaret} from '@tiptap/extension-collaboration-caret';
 import {EditorContent, ReactNodeViewRenderer, useEditor} from '@tiptap/react';
 import type {KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent} from 'react';
 import {useEffect, useMemo, useRef, useState} from 'react';
 import {CodeBlockKeymap} from '../utils/code-block/code-block-keymap';
+import {renderCaret, renderCaretSelection} from '../utils/collaboration/caret-render';
+import {
+  type CollaborationConfig,
+  type CollaborationStatus,
+  type CollaboratorInfo,
+  type HistoricalEditorInfo,
+  Y_XML_FRAGMENT_FIELD
+} from '../utils/collaboration/collaboration-types';
 import {documentEditorExtensions} from '../utils/extensions';
 import {setActiveImageUploadErrorHandler} from '../utils/image/image-upload-error-registry';
 import {setActiveImageUploader} from '../utils/image/image-uploader-registry';
@@ -30,7 +40,9 @@ import {
 import {CodeBlockView} from './CodeBlockView';
 import {DocumentOutline} from './DocumentOutline';
 import {FormattingBubbleMenu} from './FormattingBubbleMenu';
+import {ImageBubbleMenu} from './ImageBubbleMenu';
 import {MermaidView} from './MermaidView';
+import {TableBubbleMenu} from './TableBubbleMenu';
 import {VideoView} from './VideoView';
 import {ZoomableMedia} from './ZoomableMedia';
 
@@ -41,8 +53,10 @@ export interface DocumentEditorProps {
    * 初始内容（ProseMirror JSON）。只在组件首次挂载时读取一次，切换到另一篇文档时，
    * 消费方必须用不同的 `key`（例如 `key={documentId}`）强制重新挂载，而不是期望这个
    * 组件在同一个实例上"热切换"内容——这跟大多数富文本编辑器组件的使用约定一致。
+   * 提供了 `collaboration` 时这个 prop 被忽略（内容真源变成传入的 `Y.Doc`），可以
+   * 不传。
    */
-  content: unknown;
+  content?: unknown;
   /** 当前用户角色是否允许编辑（`VIEWER` 传 `false`，见 spec.md「只读模式」） */
   editable: boolean;
   /** 离线时强制只读，即使 `editable` 为 true（见 spec.md「离线只读缓存」） */
@@ -75,14 +89,39 @@ export interface DocumentEditorProps {
   pollVideoStatus?: (assetId: string) => Promise<VideoStatusResult>;
   /** 视频上传失败时的提示回调，不传时静默失败（同 `onImageUploadError` 的分工） */
   onVideoUploadError?: (message: string) => void;
-  /** 防抖结束后触发的保存回调；reject 会被捕获并展示为"保存失败" */
-  onSave: (json: unknown) => Promise<void>;
+  /** 防抖结束后触发的保存回调；reject 会被捕获并展示为"保存失败"。协同模式下
+   * （提供了 `collaboration`）这个回调不会被调用，可以不传 */
+  onSave?: (json: unknown) => Promise<void>;
   onSaveStatusChange?: (status: SaveStatus) => void;
   fullscreen?: boolean;
   onFullscreenChange?: (next: boolean) => void;
   className?: string;
-  /** 自动保存防抖时长（毫秒），默认 800ms（见 spec.md「停止输入后自动保存」） */
+  /** 自动保存防抖时长（毫秒），默认 800ms（见 spec.md「停止输入后自动保存」）；
+   * 协同模式下不生效（内容持久化由协同连接驱动，不再走离散的 `onSave` 调用） */
   autosaveDelay?: number;
+  /**
+   * 可选的实时协同配置（见 yjs-realtime-collaboration design.md 决策 8）：不传时
+   * 编辑器行为跟接入协同能力之前完全一致（走 `StarterKit` 自带 history、本地状态
+   * 管理、`onSave` 防抖保存）；传入时才装配 `Collaboration`/`CollaborationCaret`
+   * 扩展、关闭默认 history，改用协同版 undo/redo，且忽略 `content`/`onSave`
+   * （内容真源变成传入的 `Y.Doc`，不再是这两个 prop）。组件本身不创建/管理协同
+   * 连接，`document`/`provider` 的生命周期完全由消费方负责。
+   */
+  collaboration?: CollaborationConfig;
+  /** 协同模式下的同步连接状态展示（见 spec.md 修改后的「自动保存与状态反馈」需求），
+   * 由消费方监听 provider 的连接/同步事件后传入；不传时默认展示"连接中"。
+   * 未提供 `collaboration` 时这个 prop 被忽略。 */
+  collaborationStatus?: CollaborationStatus;
+  /** 协同连接异常时的重连入口回调；不传时"连接异常"提示不展示重连按钮 */
+  onReconnect?: () => void;
+  /**
+   * 曾经编辑过这篇文档的人（历史编辑人，不要求当前在线），展示在标题下方，以
+   * "头像 + 用户名"的列表形式呈现（跟当前在线协作者的头像堆叠是两种不同的展示，
+   * 后者在工具栏、只是头像不带名字——见体验优化：协同能力之外，用户也想知道
+   * "这篇文档大致被谁编辑过"）。消费方自己决定怎么取这份数据（如按 `DocumentVersion`
+   * 的作者去重，理论上应该已经去重），本组件会再按 `id` 兜底去重一次，不传则不渲染。
+   */
+  historicalEditors?: HistoricalEditorInfo[];
 }
 
 function cx(...classNames: Array<string | false | undefined | null>): string {
@@ -121,14 +160,35 @@ export function DocumentEditor({
   fullscreen = false,
   onFullscreenChange,
   className,
-  autosaveDelay = 800
+  autosaveDelay = 800,
+  collaboration,
+  collaborationStatus = 'connecting',
+  onReconnect,
+  historicalEditors = []
 }: DocumentEditorProps) {
   const isEditable = editable && !offline;
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [collaborators, setCollaborators] = useState<CollaboratorInfo[]>([]);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestContentRef = useRef<unknown>(content);
 
+  // 防御性去重：消费方约定按用户 id 去重传入（见 apps/api 的 `listEditors`，DB 层
+  // 已经 `distinct: ['createdBy']`），这里再按 `id` 兜底一次——本组件不应该假设
+  // 所有消费方都严格遵守这个约定，重复渲染同一个人的头像是明显的体验 bug。
+  const dedupedHistoricalEditors = useMemo(() => {
+    const seen = new Set<string>();
+    return historicalEditors.filter(editor => {
+      if (seen.has(editor.id)) return false;
+      seen.add(editor.id);
+      return true;
+    });
+  }, [historicalEditors]);
+
+  // 编辑器整套扩展配置（含 collaboration.document/collaboration.user）只在挂载时读一次
+  // 快照，切换协同配置要靠外层 key 强制重新挂载，不是在同一个实例上热切换（跟 content/
+  // useEditor 是同一个约定，见组件顶部 content prop 的注释）。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 见上面注释，故意只挂载时读一次快照，不跟随 collaboration.document/collaboration.user 变化重新计算
   const extensions = useMemo(
     () => [
       ...documentEditorExtensions.map(extension => {
@@ -140,6 +200,11 @@ export function DocumentEditor({
         }
         if (extension.name === 'video') {
           return extension.extend({addNodeView: () => ReactNodeViewRenderer(VideoView)});
+        }
+        // 协同模式下必须关闭 StarterKit 自带的 history，改用 Collaboration 扩展自带的
+        // 协同版 undo/redo（见 design.md 决策 8），否则本地 undo 栈会跟协同状态冲突。
+        if (extension.name === 'starterKit' && collaboration) {
+          return extension.configure({undoRedo: false});
         }
         return extension;
       }),
@@ -154,7 +219,21 @@ export function DocumentEditor({
       // `.m3u8` 地址才能被优先识别成视频（见 utils/video-paste-extension.ts 顶部注释）
       LinkPreviewPaste,
       VideoPastePattern,
-      CodeBlockKeymap
+      CodeBlockKeymap,
+      ...(collaboration
+        ? [
+            Collaboration.configure({
+              document: collaboration.document,
+              field: Y_XML_FRAGMENT_FIELD
+            }),
+            CollaborationCaret.configure({
+              provider: collaboration.provider,
+              user: collaboration.user,
+              render: renderCaret,
+              selectionRender: renderCaretSelection
+            })
+          ]
+        : [])
     ],
     []
   );
@@ -165,6 +244,7 @@ export function DocumentEditor({
   }
 
   async function performSave(json: unknown): Promise<void> {
+    if (!onSave) return;
     updateSaveStatus('saving');
     try {
       await onSave(json);
@@ -183,9 +263,13 @@ export function DocumentEditor({
   const editor = useEditor(
     {
       extensions,
-      content: content as object,
+      // 协同模式下内容真源是传入的 Y.Doc（由 Collaboration 扩展接管），不能再传
+      // `content`——两者同时存在会跟 ySyncPlugin 的内容管理冲突。
+      content: collaboration ? undefined : (content as object),
       editable: isEditable,
-      onUpdate: ({editor: instance}) => scheduleSave(instance.getJSON())
+      // 协同模式下不走离散的防抖保存：内容持久化由协同连接驱动（见
+      // apps/collab-server 的周期性持久化），`onSave` 在这个模式下不生效。
+      onUpdate: collaboration ? undefined : ({editor: instance}) => scheduleSave(instance.getJSON())
     },
     []
   );
@@ -193,6 +277,41 @@ export function DocumentEditor({
   useEffect(() => {
     editor.setEditable(isEditable);
   }, [editor, isEditable]);
+
+  // 协作者 presence：不依赖 CollaborationCaret 内部的 storage（那是给编辑区域内的
+  // 光标/选区标记用的，跟"在线用户列表"是两个独立的展示需求），直接监听
+  // `provider.awareness` 的变化自己维护一份列表（见 realtime-collaboration
+  // spec.md「展示在线协作者列表」）。同时把当前用户信息写入本地 awareness 状态，
+  // 保证其他协作者能看到"我"（`CollaborationCaret` 通常也会做这件事，这里显式写一次
+  // 是为了不依赖它的内部时序，两者都写是幂等的，不会冲突）。
+  useEffect(() => {
+    if (!collaboration) {
+      setCollaborators([]);
+      return;
+    }
+    const {awareness} = collaboration.provider;
+    awareness.setLocalStateField('user', collaboration.user);
+
+    function syncCollaborators(): void {
+      const entries = Array.from(awareness.getStates().entries()) as Array<
+        [number, {user?: {name?: string; color?: string; avatarUrl?: string | null}}]
+      >;
+      setCollaborators(
+        entries
+          .filter(([clientId]) => clientId !== awareness.clientID)
+          .map(([clientId, state]) => ({
+            clientId,
+            name: state.user?.name ?? '匿名用户',
+            color: state.user?.color ?? '#999999',
+            avatarUrl: state.user?.avatarUrl ?? null
+          }))
+      );
+    }
+
+    syncCollaborators();
+    awareness.on('change', syncCollaborators);
+    return () => awareness.off('change', syncCollaborators);
+  }, [collaboration]);
 
   useEffect(() => {
     setActiveImageUploader(isEditable ? uploadImage : null);
@@ -297,9 +416,24 @@ export function DocumentEditor({
   return (
     <div className={cx('doc-editor', fullscreen && 'doc-editor--fullscreen', className)}>
       <div className="doc-editor__toolbar">
-        <SaveStatusIndicator status={isEditable ? saveStatus : 'idle'} onRetry={retrySave} />
+        {collaboration ? (
+          <CollaborationStatusIndicator status={collaborationStatus} onReconnect={onReconnect} />
+        ) : (
+          <SaveStatusIndicator status={isEditable ? saveStatus : 'idle'} onRetry={retrySave} />
+        )}
 
         {offline ? <span className="doc-editor__offline-badge">当前离线，暂不支持编辑</span> : null}
+
+        {collaboration && collaborators.length > 0 ? (
+          <div
+            className="doc-editor__collaborators"
+            title={collaborators.map(collaborator => collaborator.name).join('、')}
+          >
+            {collaborators.slice(0, 5).map(collaborator => (
+              <CollaboratorAvatar key={collaborator.clientId} collaborator={collaborator} />
+            ))}
+          </div>
+        ) : null}
 
         <span className="doc-editor__spacer" />
 
@@ -318,6 +452,8 @@ export function DocumentEditor({
         <DocumentOutline editor={editor} />
         <div className="doc-editor__content-wrapper">
           <FormattingBubbleMenu editor={editor} />
+          <ImageBubbleMenu editor={editor} />
+          <TableBubbleMenu editor={editor} />
           {/* biome-ignore lint/a11y/noStaticElementInteractions: 事件委托容器，实际可交互元素是里面的 <img>（本身就有 alt 文本），不是这层 div 本身 */}
           <div className="doc-editor__canvas" onDoubleClick={handleCanvasDoubleClick}>
             {onTitleChange ? (
@@ -331,6 +467,18 @@ export function DocumentEditor({
                 aria-label="文档标题"
               />
             ) : null}
+
+            {dedupedHistoricalEditors.length > 0 ? (
+              <ul className="doc-editor__history-editors" aria-label="历史编辑人">
+                {dedupedHistoricalEditors.map(editor => (
+                  <li key={editor.id} className="doc-editor__history-editor">
+                    <CollaboratorAvatar collaborator={editor} muted />
+                    <span className="doc-editor__history-editor-name">{editor.name}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+
             <EditorContent editor={editor} className="doc-editor__content" />
           </div>
         </div>
@@ -356,6 +504,41 @@ interface SaveStatusIndicatorProps {
   onRetry: () => void;
 }
 
+interface CollaboratorAvatarProps {
+  collaborator: {name: string; color: string; avatarUrl?: string | null};
+  /** 历史编辑人（非当前在线）用这个视觉上跟"正在协同"的头像区分开，不用另起一套组件 */
+  muted?: boolean;
+}
+
+/**
+ * 单个协作者/历史编辑人的头像展示：有 `avatarUrl` 就显示真实头像图，加载失败或
+ * 没有 `avatarUrl` 时退回用户名首字母的纯色圆圈——跟 `apps/web` 的 `UserAvatar`
+ * 是同一套兜底思路，这里独立实现一份（本包不依赖 apps/web 的组件）。
+ */
+function CollaboratorAvatar({collaborator, muted = false}: CollaboratorAvatarProps) {
+  const [errored, setErrored] = useState(false);
+  const className = cx(
+    'doc-editor__collaborator-avatar',
+    muted && 'doc-editor__collaborator-avatar--muted'
+  );
+
+  if (collaborator.avatarUrl && !errored) {
+    return (
+      <img
+        src={collaborator.avatarUrl}
+        alt={collaborator.name}
+        className={className}
+        onError={() => setErrored(true)}
+      />
+    );
+  }
+  return (
+    <span className={className} style={{backgroundColor: collaborator.color}}>
+      {collaborator.name.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
+
 function SaveStatusIndicator({status, onRetry}: SaveStatusIndicatorProps) {
   if (status === 'idle') return null;
   if (status === 'saving') {
@@ -372,6 +555,38 @@ function SaveStatusIndicator({status, onRetry}: SaveStatusIndicatorProps) {
       <button type="button" onClick={onRetry}>
         重试
       </button>
+    </span>
+  );
+}
+
+interface CollaborationStatusIndicatorProps {
+  status: CollaborationStatus;
+  onReconnect?: () => void;
+}
+
+/**
+ * 对应 document-editor spec.md 修改后的「自动保存与状态反馈」需求：协同模式下
+ * 展示的是同步连接状态（同步中/已同步/连接异常+重连），不是某一次离散保存请求的
+ * 成败——跟 `SaveStatusIndicator` 是平行的两套展示，二选一渲染（见组件顶部
+ * `collaboration` prop 的判断），不共享状态。
+ */
+function CollaborationStatusIndicator({status, onReconnect}: CollaborationStatusIndicatorProps) {
+  if (status === 'connecting') {
+    return (
+      <span className="doc-editor__save-status doc-editor__save-status--saving">同步中...</span>
+    );
+  }
+  if (status === 'synced') {
+    return <span className="doc-editor__save-status doc-editor__save-status--saved">已同步</span>;
+  }
+  return (
+    <span className="doc-editor__save-status doc-editor__save-status--error">
+      连接异常
+      {onReconnect ? (
+        <button type="button" onClick={onReconnect}>
+          重连
+        </button>
+      ) : null}
     </span>
   );
 }
