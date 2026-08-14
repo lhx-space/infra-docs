@@ -9,6 +9,11 @@
     "node": ">=22.0.0",
     "pnpm": ">=9.0.0"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
   "scripts": {
     "build": "pnpm -r --filter='./apps/*' --filter='./packages/*' build",
     "dev": "pnpm -r --parallel --filter='./apps/*' --filter='./packages/*' dev",
