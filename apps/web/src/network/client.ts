@@ -83,7 +83,8 @@ async function rawRequest<T>(path: string, options: RequestOptions = {}): Promis
     const message =
       (payload as {error?: string} | undefined)?.error ?? response.statusText ?? 'request_failed';
     const details = (payload as {details?: unknown} | undefined)?.details;
-    throw new ApiError(response.status, message, details);
+    const traceId = response.headers.get('x-trace-id') ?? undefined;
+    throw new ApiError(response.status, message, details, traceId);
   }
 
   return payload as T;
