@@ -126,6 +126,14 @@
   font-size: 12px;
 }
 
+/* 超大文档拆分引导（见 document-editor-performance spec.md「超大文档拆分引导」）：
+   纯提示性质，用跟"已保存"同一档的中性提示色，不用 danger 色——块数超过阈值不是错误，
+   不需要引起跟保存失败同等级的视觉警觉。 */
+.doc-editor__split-suggestion {
+  color: var(--doc-editor-fg-muted);
+  font-size: 12px;
+}
+
 .doc-editor__body {
   position: relative;
   display: flex;
@@ -152,6 +160,7 @@
    整个盒子宽度——`--doc-editor-max-width: 1070px` 就是在这个盒模型下实测确认过的值，
    不要再按"纯内容宽度"的假设去换算/改动这个数字。 */
 .doc-editor__canvas {
+  position: relative;
   max-width: var(--doc-editor-max-width);
   margin: 0 auto;
   padding: 32px 24px 120px;
@@ -178,6 +187,20 @@
 .doc-editor__title:disabled {
   cursor: default;
   opacity: 1;
+}
+
+/* 协同模式下标题不再是 `<input>`，是一个装了极简 Tiptap 编辑器实例的
+ * `.ProseMirror` 容器（见 DocumentEditor.tsx「标题的极简编辑器实例」）——上面
+ * `.doc-editor__title` 那组字号/字重/颜色规则同样适用（它们跟具体是 input 还是
+ * contenteditable div 无关），这里只补上 `.doc-editor__title` 单独覆盖不到的两条：
+ * 去掉 contenteditable 元素默认的聚焦描边，以及把内部 `<p>` 的默认段落间距清零
+ * （标题永远只有一个段落，不需要段落间距，否则会比原来的单行 `<input>` 明显更高）。 */
+.doc-editor__title-editor .ProseMirror {
+  outline: none;
+}
+
+.doc-editor__title-editor .ProseMirror p {
+  margin: 0;
 }
 
 /* 定宽/居中已经挪到 `.doc-editor__canvas`，`EditorContent` 本身不需要额外规则，
@@ -305,6 +328,51 @@
   outline: none;
   line-height: 1.75;
   font-size: var(--doc-editor-font-size);
+}
+
+/* ---- 视口外渐染跳过（长文档滚动性能，见 system-performance-hardening design.md
+   决策 1）----
+ * ProseMirror 把每一个顶层块节点（段落/标题/列表/图片/表格/代码块/Mermaid/视频等）
+ * 渲染成 `.ProseMirror` 的直接子元素，不管节点内部嵌套了多少层（比如列表项里的段落）——
+ * 只在这一级应用 `content-visibility: auto`：浏览器会跳过当前不在视口附近的这些节点的
+ * 布局/绘制计算，文档越长、视口外内容越多，收益越明显；节点本身始终保留在 DOM 里，
+ * 不改变 DOM 结构，`contenteditable` 依赖整棵树原生支持的方向键移动/选区/输入法组合
+ * 输入行为完全不受影响。
+ */
+.ProseMirror > * {
+  content-visibility: auto;
+
+  /* 兜底估算高度：用 `em` 而不是写死 px，字号变化时这个估算也跟着变。多数纯文本块
+     （段落/标题/列表项）一行左右的高度用这个值就足够接近，避免视口外内容进入视口时
+     因为估算过小造成明显的滚动跳动；下面几类高度差异较大的块类型单独覆盖成更接近
+     真实高度的估算值。 */
+  contain-intrinsic-size: auto 1.75em;
+}
+
+/* 图片：`@tiptap/extension-image` 的 `ResizableNodeView` 在 `<img>` 外包了一层
+   `[data-resize-container]`（见 image.css 顶部注释，拿不到自定义 class，只能用它写死
+   的 data 属性选择器），这层容器才是 `.ProseMirror` 的直接子元素。 */
+.ProseMirror > [data-resize-container][data-node='image'] {
+  contain-intrinsic-size: auto 320px;
+}
+
+/* 表格：`resizable: true` 时 `prosemirror-tables` 会在 `<table>` 外包一层
+   `.tableWrapper`（库自己写死的类名，同图片的情况一样不是我们起的），这层 wrapper
+   才是顶层子元素，不是内层的 `<table class="doc-editor-table">` 本身。 */
+.ProseMirror > .tableWrapper {
+  contain-intrinsic-size: auto 160px;
+}
+
+.ProseMirror > .doc-editor-mermaid {
+  contain-intrinsic-size: auto 240px;
+}
+
+.ProseMirror > .doc-editor-video {
+  contain-intrinsic-size: auto 280px;
+}
+
+.ProseMirror > .doc-editor-code-block {
+  contain-intrinsic-size: auto 200px;
 }
 
 .ProseMirror h1 {

@@ -1,9 +1,13 @@
 import {Extension} from '@tiptap/core';
 import {Collaboration} from '@tiptap/extension-collaboration';
 import {CollaborationCaret} from '@tiptap/extension-collaboration-caret';
+import {Placeholder} from '@tiptap/extension-placeholder';
 import {EditorContent, ReactNodeViewRenderer, useEditor} from '@tiptap/react';
+import {StarterKit} from '@tiptap/starter-kit';
 import type {KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent} from 'react';
 import {useEffect, useMemo, useRef, useState} from 'react';
+import {useCollaborationCaretLabels} from '../hooks/use-collaboration-caret-labels';
+import {useDocumentBlockCount} from '../hooks/use-document-block-count';
 import {CodeBlockKeymap} from '../utils/code-block/code-block-keymap';
 import {renderCaret, renderCaretSelection} from '../utils/collaboration/caret-render';
 import {
@@ -11,6 +15,7 @@ import {
   type CollaborationStatus,
   type CollaboratorInfo,
   type HistoricalEditorInfo,
+  Y_TITLE_FRAGMENT_FIELD,
   Y_XML_FRAGMENT_FIELD
 } from '../utils/collaboration/collaboration-types';
 import {documentEditorExtensions} from '../utils/extensions';
@@ -48,6 +53,13 @@ import {ZoomableMedia} from './ZoomableMedia';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
+/** 建议拆分为子文档的内容块数量阈值：目前没有真实的"超大文档"样本数据，先给一个偏保守
+ * 的默认值，后续可以根据真实使用情况调整，不是这次改动需要精确定案的事项（见
+ * system-performance-hardening design.md Open Questions）。只统计顶层块数量
+ * （`doc.childCount`），不做真正的内容虚拟化/强制限制——纯提示性质，不阻塞任何已有操作
+ * （见 document-editor-performance spec.md「超大文档拆分引导」）。 */
+const SPLIT_SUGGESTION_BLOCK_THRESHOLD = 300;
+
 export interface DocumentEditorProps {
   /**
    * 初始内容（ProseMirror JSON）。只在组件首次挂载时读取一次，切换到另一篇文档时，
@@ -62,10 +74,21 @@ export interface DocumentEditorProps {
   /** 离线时强制只读，即使 `editable` 为 true（见 spec.md「离线只读缓存」） */
   offline?: boolean;
   /** 标题：跟正文同属一个可滚动内容区，渲染在内容顶部（跟飞书一致——标题是文档内容的
-   * 第一行，会跟着正文一起滚动，不是页面级固定的一条通栏）。标题本身仍然是独立字段，
-   * 不会被写进 `content` JSON 里（见 design.md 决策 1），保存逻辑由消费方通过
-   * `onTitleChange` 自己处理（跟 `onSave` 是同样的分工：组件只负责渲染和触发回调）。
-   * 不传时不渲染标题区域。 */
+   * 第一行，会跟着正文一起滚动，不是页面级固定的一条通栏）。标题本身仍然不会被写进
+   * `content` JSON 里。
+   *
+   * 协同模式（提供了 `collaboration`）下，标题不再是纯受控 `<input>`：内容真源变成
+   * `collaboration.document` 上另一个共享 `XmlFragment`（见 collaborative-document-title
+   * design.md 决策 1/2），由一个极简的内置 Tiptap 编辑器实例绑定，多人同时编辑会
+   * CRDT 自动合并，这个 `title` prop 在协同模式下被忽略（跟正文的 `content` prop 是
+   * 同一个道理）。`onTitleChange` 仍然会在标题变化时被调用（本地输入或远程合并都会
+   * 触发），但语义变成"告诉外部现在的标题是什么"（供页面 `<title>`/面包屑展示），
+   * 不再意味着"调用方需要负责持久化"——持久化已经完全交给协同层。
+   *
+   * 非协同模式下行为不变：`title`/`onTitleChange` 是一对标准的受控组件 prop，保存逻辑
+   * 由消费方自己处理（跟 `onSave` 是同样的分工：组件只负责渲染和触发回调）。
+   *
+   * 两种模式下都是：不传 `onTitleChange` 时不渲染标题区域。 */
   title?: string;
   onTitleChange?: (title: string) => void;
   titlePlaceholder?: string;
@@ -172,6 +195,7 @@ export function DocumentEditor({
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestContentRef = useRef<unknown>(content);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
 
   // 防御性去重：消费方约定按用户 id 去重传入（见 apps/api 的 `listEditors`，DB 层
   // 已经 `distinct: ['createdBy']`），这里再按 `id` 兜底一次——本组件不应该假设
@@ -277,6 +301,94 @@ export function DocumentEditor({
   useEffect(() => {
     editor.setEditable(isEditable);
   }, [editor, isEditable]);
+
+  // 标题的极简编辑器实例（见 collaborative-document-title design.md 决策 2）：只装配
+  // `Document`/`Paragraph`/`Text` 三个节点（`StarterKit` 里其余全部子扩展显式关闭），
+  // 保证标题永远是单段落纯文本，不支持任何 mark；`Enter`/`Shift-Enter` 拦截掉——按
+  // Enter 直接把焦点切给正文（跟原来纯 `<input>` 时代的 `handleTitleKeyDown` 是同一个
+  // 交互，这里换成 Tiptap 扩展的 `addKeyboardShortcuts` 实现），不允许在标题里换行。
+  // 跟主编辑器的 `extensions` 一样只在挂载时读一次快照（`useMemo(..., [])`），协同配置/
+  // placeholder 文案变化需要靠外层 `key` 强制重新挂载。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 故意只挂载时读一次快照，理由同主编辑器 extensions 的注释
+  const titleExtensions = useMemo(() => {
+    const shared = [
+      StarterKit.configure({
+        blockquote: false,
+        bold: false,
+        bulletList: false,
+        code: false,
+        codeBlock: false,
+        dropcursor: false,
+        gapcursor: false,
+        hardBreak: false,
+        heading: false,
+        horizontalRule: false,
+        italic: false,
+        link: false,
+        listItem: false,
+        listKeymap: false,
+        orderedList: false,
+        strike: false,
+        underline: false,
+        trailingNode: false,
+        // 标题不需要自己的撤销栈：非协同模式下复用主编辑器/消费方自己的保存节奏，
+        // 协同模式下跟正文一样改用 Collaboration 扩展自带的协同版 undo/redo。
+        undoRedo: false
+      }),
+      Placeholder.configure({placeholder: titlePlaceholder}),
+      Extension.create({
+        name: 'titleKeymap',
+        addKeyboardShortcuts() {
+          return {
+            Enter: () => {
+              editor.commands.focus('start');
+              return true;
+            },
+            'Shift-Enter': () => true
+          };
+        }
+      })
+    ];
+    if (!collaboration) return shared;
+    return [
+      ...shared,
+      Collaboration.configure({
+        document: collaboration.document,
+        field: Y_TITLE_FRAGMENT_FIELD
+      })
+    ];
+  }, []);
+
+  const titleEditor = useEditor(
+    {
+      extensions: titleExtensions,
+      // 非协同模式下才用这个初始值（只在挂载时读一次，跟主编辑器 content prop 同一个
+      // 约定）；协同模式下内容真源是 Y.Doc 上的 title XmlFragment，忽略这个值。
+      content: collaboration
+        ? undefined
+        : {
+            type: 'doc',
+            content: [{type: 'paragraph', content: title ? [{type: 'text', text: title}] : []}]
+          },
+      editable: isEditable,
+      onUpdate: ({editor: instance}) => onTitleChange?.(instance.getText())
+    },
+    []
+  );
+
+  useEffect(() => {
+    titleEditor.setEditable(isEditable);
+  }, [titleEditor, isEditable]);
+
+  // 超大文档拆分引导：只读顶层块数量，纯提示、不阻塞编辑（见 document-editor-performance
+  // spec.md「超大文档拆分引导」）。这个统计跟 `onSave`/协同同步走的是完全独立的路径——
+  // 只订阅 `editor.on('update', ...)` 读一个数字，不参与、也不影响任何保存/同步逻辑。
+  const blockCount = useDocumentBlockCount(editor);
+  const showSplitSuggestion = blockCount > SPLIT_SUGGESTION_BLOCK_THRESHOLD;
+
+  // 协作者光标用户名标签的位置（覆盖层方案，修复 `content-visibility: auto` 会把标签
+  // 裁掉一部分的显示 bug，见 hooks/use-collaboration-caret-labels.ts 顶部详细说明）。
+  const caretLabels = useCollaborationCaretLabels(editor, canvasRef, Boolean(collaboration));
 
   // 协作者 presence：不依赖 CollaborationCaret 内部的 storage（那是给编辑区域内的
   // 光标/选区标记用的，跟"在线用户列表"是两个独立的展示需求），直接监听
@@ -424,6 +536,10 @@ export function DocumentEditor({
 
         {offline ? <span className="doc-editor__offline-badge">当前离线，暂不支持编辑</span> : null}
 
+        {showSplitSuggestion ? (
+          <span className="doc-editor__split-suggestion">内容较多，建议拆分为多篇子文档</span>
+        ) : null}
+
         {collaboration && collaborators.length > 0 ? (
           <div
             className="doc-editor__collaborators"
@@ -455,17 +571,29 @@ export function DocumentEditor({
           <ImageBubbleMenu editor={editor} />
           <TableBubbleMenu editor={editor} />
           {/* biome-ignore lint/a11y/noStaticElementInteractions: 事件委托容器，实际可交互元素是里面的 <img>（本身就有 alt 文本），不是这层 div 本身 */}
-          <div className="doc-editor__canvas" onDoubleClick={handleCanvasDoubleClick}>
+          <div
+            className="doc-editor__canvas"
+            ref={canvasRef}
+            onDoubleClick={handleCanvasDoubleClick}
+          >
             {onTitleChange ? (
-              <input
-                className="doc-editor__title"
-                value={title ?? ''}
-                onChange={event => onTitleChange(event.target.value)}
-                onKeyDown={handleTitleKeyDown}
-                placeholder={titlePlaceholder}
-                disabled={!isEditable}
-                aria-label="文档标题"
-              />
+              collaboration ? (
+                <EditorContent
+                  editor={titleEditor}
+                  className="doc-editor__title doc-editor__title-editor"
+                  aria-label="文档标题"
+                />
+              ) : (
+                <input
+                  className="doc-editor__title"
+                  value={title ?? ''}
+                  onChange={event => onTitleChange(event.target.value)}
+                  onKeyDown={handleTitleKeyDown}
+                  placeholder={titlePlaceholder}
+                  disabled={!isEditable}
+                  aria-label="文档标题"
+                />
+              )
             ) : null}
 
             {dedupedHistoricalEditors.length > 0 ? (
@@ -480,6 +608,20 @@ export function DocumentEditor({
             ) : null}
 
             <EditorContent editor={editor} className="doc-editor__content" />
+
+            {collaboration && caretLabels.length > 0 ? (
+              <div className="doc-editor-caret-overlay" aria-hidden="true">
+                {caretLabels.map(label => (
+                  <span
+                    key={label.key}
+                    className="doc-editor-caret__label"
+                    style={{top: label.top, left: label.left, backgroundColor: label.color}}
+                  >
+                    {label.name}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

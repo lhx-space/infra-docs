@@ -7,6 +7,12 @@
  * （允许消费方塞任意自定义字段），这里按需读取 `name`/`color` 两个字段并给出兜底值，
  * 不直接断言成 `CollaborationUser`——避免遇到字段缺失时把 `undefined` 硬塞进 DOM
  * 属性（`borderColor`/`textContent` 等），比强制类型断言更安全。
+ *
+ * 注意：这里只渲染光标竖线本身，不再把用户名标签渲染成它的子节点——原来的写法会被
+ * `content-visibility: auto` 的绘制局限裁掉一部分（见
+ * hooks/use-collaboration-caret-labels.ts 顶部的详细说明），用户名标签改由那个 hook +
+ * `DocumentEditor` 里的独立覆盖层渲染。这里通过 `data-collab-caret-*` 两个属性把
+ * name/color 挂在光标元素上，供那个 hook 读取。
  */
 import type {DecorationAttrs} from '@tiptap/pm/view';
 
@@ -22,13 +28,8 @@ export function renderCaret(user: Record<string, unknown>): HTMLElement {
   const cursor = document.createElement('span');
   cursor.classList.add('doc-editor-caret');
   cursor.style.borderColor = color;
-
-  const label = document.createElement('span');
-  label.classList.add('doc-editor-caret__label');
-  label.style.backgroundColor = color;
-  label.textContent = name;
-
-  cursor.appendChild(label);
+  cursor.dataset['collabCaretName'] = name;
+  cursor.dataset['collabCaretColor'] = color;
   return cursor;
 }
 

@@ -6,7 +6,6 @@
  */
 
 .doc-editor-caret {
-  position: relative;
   border-left: 1px solid;
   margin-left: -1px;
   margin-right: -1px;
@@ -14,10 +13,16 @@
   pointer-events: none;
 }
 
+/* 光标用户名标签：不再是 `.doc-editor-caret` 的子节点，`top`/`left` 由
+ * `useCollaborationCaretLabels` 通过 inline style 动态计算写入（相对
+ * `.doc-editor-caret-overlay` 定位），这里只保留跟位置无关的外观属性——为什么要挪出来见
+ * hooks/use-collaboration-caret-labels.ts 顶部关于 `content-visibility` 裁剪问题的说明。
+ * `transform: translateY(-100%)` 让标签的底边贴着计算出来的 `top` 坐标（也就是光标自己的
+ * 顶部），视觉效果跟原来「悬浮在当前行上方」完全一致，且不需要在 JS 里预先量出标签自身的
+ * 高度。 */
 .doc-editor-caret__label {
   position: absolute;
-  top: -1.4em;
-  left: -1px;
+  transform: translateY(-100%);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.4;
@@ -26,6 +31,17 @@
   border-radius: 3px;
   padding: 0 4px;
   user-select: none;
+}
+
+/* 覆盖层容器：跟 `.ProseMirror` 是兄弟关系（`.doc-editor__canvas` 的直接子元素，见
+ * styles/index.css 里 `.doc-editor__canvas { position: relative; }`），不在任何应用了
+ * `content-visibility: auto` 的元素内部，标签在这里渲染就不会被绘制局限裁剪。
+ * `pointer-events: none` 保证它纯展示、不拦截下面编辑区的任何鼠标/触摸交互。 */
+.doc-editor-caret-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
 }
 
 .doc-editor-caret-selection {
