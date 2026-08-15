@@ -1,18 +1,31 @@
 import type {HistoricalEditorInfo} from '@luhanxin/tiptap-editor';
 import {DocumentEditor} from '@luhanxin/tiptap-editor';
-import {History, Trash2} from 'lucide-react';
-import {useEffect, useState} from 'react';
+import {Download, FileDown, FileText, FileType2, History, Loader2, Trash2} from 'lucide-react';
+import {useEffect, useRef, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
 import {toast} from 'sonner';
 import {ConfirmDialog} from '@/components/shared/ConfirmDialog';
 import {EmptyState} from '@/components/shared/EmptyState';
 import {PageHeader} from '@/components/shell/PageHeaderContext';
 import {Button} from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu';
 import {VersionHistoryDialog} from '@/components/wiki/VersionHistoryDialog';
 import {useDocumentCollaboration} from '@/hooks/use-document-collaboration';
 import {useOnlineStatus} from '@/hooks/use-online-status';
 import {colorFromUserId} from '@/lib/collaboration-color';
 import {ApiError} from '@/network';
+import {
+  createPdfExport,
+  downloadPdfExport,
+  downloadSyncExport,
+  getDocumentExportStatus,
+  saveBlobFile
+} from '@/services/document-export';
 import {useAuthStore} from '@/store/auth';
 import type {Document} from '@/store/document';
 import {useDocumentStore} from '@/store/document';
@@ -152,6 +165,100 @@ export default function DocumentEditorPage() {
     }
   }
 
+  /**
+   * ---- 导出功能（见 document-export spec.md）----
+   * Markdown/Word：同步接口直接拿文件流保存；
+   * PDF：提交任务 → 固定间隔轮询状态 → READY 后下载。`pdfExport.phase` 驱动菜单里的
+   * PDF 项展示"生成中 / 下载 / 失败重试"三态；轮询用 `setInterval` + ref 句柄，组件
+   * 卸载/切换文档/重新发起新导出时清掉旧轮询。
+   */
+  type PdfExportPhase =
+    | {phase: 'idle'}
+    | {phase: 'generating'; exportId: string}
+    | {phase: 'ready'; exportId: string}
+    | {phase: 'failed'; exportId: string; message?: string};
+
+  const [pdfExport, setPdfExport] = useState<PdfExportPhase>({phase: 'idle'});
+  const [syncExporting, setSyncExporting] = useState<'markdown' | 'word' | null>(null);
+  const pdfPollRef = useRef<number | null>(null);
+
+  function stopPdfPolling(): void {
+    if (pdfPollRef.current !== null) {
+      window.clearInterval(pdfPollRef.current);
+      pdfPollRef.current = null;
+    }
+  }
+
+  // 卸载时清掉可能还在跑的轮询定时器
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stopPdfPolling 只读取稳定的 ref，刻意不进依赖数组
+  useEffect(() => () => stopPdfPolling(), []);
+
+  function exportErrorMessage(err: unknown, fallback: string): string {
+    return err instanceof ApiError && err.message ? err.message : fallback;
+  }
+
+  async function handleSyncExport(format: 'markdown' | 'word'): Promise<void> {
+    if (!wikiId || !documentId) return;
+    setSyncExporting(format);
+    try {
+      const blob = await downloadSyncExport(wikiId, documentId, format);
+      saveBlobFile(blob, `${title || '文档'}.${format === 'markdown' ? 'md' : 'docx'}`);
+    } catch (err) {
+      toast.error(exportErrorMessage(err, '导出失败，请稍后重试'));
+    } finally {
+      setSyncExporting(null);
+    }
+  }
+
+  function startPdfPolling(exportId: string): void {
+    stopPdfPolling();
+    pdfPollRef.current = window.setInterval(() => {
+      void (async () => {
+        if (!wikiId || !documentId) return;
+        try {
+          const {export: status} = await getDocumentExportStatus(wikiId, documentId, exportId);
+          if (status.status === 'READY') {
+            stopPdfPolling();
+            setPdfExport({phase: 'ready', exportId});
+            toast.success('PDF 已生成，可以下载了');
+          } else if (status.status === 'FAILED') {
+            stopPdfPolling();
+            setPdfExport({phase: 'failed', exportId, message: status.errorMessage});
+            toast.error(status.errorMessage || 'PDF 生成失败，请稍后重试');
+          }
+        } catch {
+          // 单次轮询失败（网络抖动等）不中断轮询，等下一个间隔重试
+        }
+      })();
+    }, 2000);
+  }
+
+  async function handleStartPdfExport(): Promise<void> {
+    if (!wikiId || !documentId) return;
+    stopPdfPolling();
+    setPdfExport({phase: 'generating', exportId: ''});
+    try {
+      const {exportId} = await createPdfExport(wikiId, documentId);
+      setPdfExport({phase: 'generating', exportId});
+      startPdfPolling(exportId);
+    } catch (err) {
+      // 提交请求本身失败（网络/权限问题）：回到 idle 并用 toast 提示，跟"任务生成失败"
+      // （FAILED 落库、菜单项显示失败态）是两条不同的反馈路径
+      setPdfExport({phase: 'idle'});
+      toast.error(exportErrorMessage(err, '导出请求失败，请稍后重试'));
+    }
+  }
+
+  async function handleDownloadPdf(exportId: string): Promise<void> {
+    if (!wikiId || !documentId) return;
+    try {
+      const blob = await downloadPdfExport(wikiId, documentId, exportId);
+      saveBlobFile(blob, `${title || '文档'}.pdf`);
+    } catch (err) {
+      toast.error(exportErrorMessage(err, '下载失败，请稍后重试'));
+    }
+  }
+
   if (!wikiId || !documentId) return null;
 
   if (notFound) {
@@ -181,6 +288,61 @@ export default function DocumentEditorPage() {
 
   const headerActions = (
     <div className="flex items-center gap-2">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm">
+            {pdfExport.phase === 'generating' ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Download className="size-4" />
+            )}
+            导出
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            disabled={syncExporting !== null || pdfExport.phase === 'generating'}
+            onSelect={() => void handleSyncExport('markdown')}
+          >
+            {syncExporting === 'markdown' ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <FileText className="size-4" />
+            )}
+            Markdown
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={syncExporting !== null || pdfExport.phase === 'generating'}
+            onSelect={() => void handleSyncExport('word')}
+          >
+            {syncExporting === 'word' ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <FileType2 className="size-4" />
+            )}
+            Word
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={pdfExport.phase === 'generating'}
+            onSelect={() => {
+              if (pdfExport.phase === 'ready' || pdfExport.phase === 'failed') {
+                void handleDownloadPdf(pdfExport.exportId);
+              } else {
+                void handleStartPdfExport();
+              }
+            }}
+          >
+            <FileDown className="size-4" />
+            {pdfExport.phase === 'generating'
+              ? 'PDF 生成中...'
+              : pdfExport.phase === 'ready'
+                ? '下载 PDF'
+                : pdfExport.phase === 'failed'
+                  ? 'PDF 生成失败，点击重试'
+                  : 'PDF'}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <Button variant="ghost" size="sm" onClick={() => setVersionHistoryOpen(true)}>
         <History className="size-4" />
         版本历史

@@ -44,6 +44,11 @@ RUN pnpm --filter=@luhanxin/tiptap-editor... --filter=@app/api... run build
 
 FROM base AS runtime
 ENV NODE_ENV=production
+# PDF 导出（document-export，见 design.md 决策 4）依赖无头浏览器渲染。`playwright install`
+# 默认按当前系统类型解析要装哪些操作系统依赖库（alpine 用的是 musl libc，跟大多数发行版的
+# glibc 不同），必须在目标运行环境（这一层，而不是构建层）执行才能装对依赖；`--with-deps`
+# 顺带装好 Chromium 渲染所需的系统库（字体/图形库等），不需要再手动 `apk add` 一长串包名。
+RUN npx playwright install --with-deps chromium
 COPY --from=build /repo /repo
 WORKDIR /repo/apps/api
 EXPOSE 3000

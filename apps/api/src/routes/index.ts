@@ -1,6 +1,7 @@
 import {Router} from 'express';
 import {authRouter} from './auth';
 import {documentRouter} from './document';
+import {documentExportRouter} from './document-export';
 import {healthRouter} from './health';
 import {linkPreviewRouter} from './link-preview';
 import {searchRouter} from './search';
@@ -18,6 +19,7 @@ router.use(userRouter);
 router.use(teamRouter);
 router.use(wikiRouter);
 router.use(documentRouter);
+router.use(documentExportRouter);
 router.use(linkPreviewRouter);
 router.use(searchRouter);
 router.use(uploadRouter);

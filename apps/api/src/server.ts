@@ -2,6 +2,7 @@ import {createApp} from './app';
 import {env} from './env';
 import {startGrpcServer} from './grpc/server';
 import {logger} from './logger';
+import {ensureDocumentExportStorageReady} from './services/document-export-storage';
 import {ensureStorageReady} from './services/storage';
 import {ensureVideoStorageReady} from './services/video-storage';
 
@@ -9,6 +10,7 @@ const app = createApp();
 
 void ensureStorageReady();
 void ensureVideoStorageReady();
+void ensureDocumentExportStorageReady();
 
 const server = app.listen(env.PORT, () => {
   logger.info({port: env.PORT}, 'api listening');

@@ -359,6 +359,16 @@ export function DocumentEditor({
     ];
   }, []);
 
+  // 保存 `onTitleChange` 的最新引用：`onUpdate` 闭包只在挂载时建一次（useEditor deps
+  // 为 []），靠 ref 读到外层每次渲染的新回调。声明必须放在 useEditor **之前**——协同
+  // 初始同步的 onUpdate 在 useEditor 内部创建实例时就会同步触发，闭包执行时 ref
+  // 必须已经初始化（否则落在暂时性死区直接抛 ReferenceError）。
+  const onTitleChangeRef = useRef(onTitleChange);
+  onTitleChangeRef.current = onTitleChange;
+  // false = 编辑器实例还在创建/初始同步阶段（发生在 React 渲染期内），此时不转发
+  // onTitleChange；挂载后的 useEffect 置 true 并补交一次初始标题。
+  const titleSyncReadyRef = useRef(false);
+
   const titleEditor = useEditor(
     {
       extensions: titleExtensions,
@@ -371,10 +381,31 @@ export function DocumentEditor({
             content: [{type: 'paragraph', content: title ? [{type: 'text', text: title}] : []}]
           },
       editable: isEditable,
-      onUpdate: ({editor: instance}) => onTitleChange?.(instance.getText())
+      // 协同模式下 `useEditor`（默认 `immediatelyRender: true`）会在 React 渲染期间
+      // 同步创建编辑器实例，`Collaboration` 扩展装载 Y.Doc 时会把远程标题内容做一次
+      // 初始同步（dispatch 一个 update transaction）——如果在这里无条件转发
+      // `onTitleChange`（→ 外层组件的 setState），就是"渲染 DocumentEditor 期间更新
+      // DocumentEditorPage"的 React 警告来源。初始同步阶段先跳过，挂载后的 effect
+      // 里补一次转发（见下方 useEffect），此后本地编辑/远程更新都走正常的事件回调
+      // 路径，不再落在 React 渲染期内。
+      onUpdate: ({editor: instance}) => {
+        if (!titleSyncReadyRef.current) return;
+        onTitleChangeRef.current?.(instance.getText());
+      }
     },
     []
   );
+
+  // 挂载完成后：放行后续的 update 转发，并把初始同步进来的标题补交给外层一次
+  // （effect 里调用外层 setState 是合法的，不触发渲染期更新警告）
+  useEffect(() => {
+    if (!titleEditor) return;
+    titleSyncReadyRef.current = true;
+    onTitleChangeRef.current?.(titleEditor.getText());
+    return () => {
+      titleSyncReadyRef.current = false;
+    };
+  }, [titleEditor]);
 
   useEffect(() => {
     titleEditor.setEditable(isEditable);

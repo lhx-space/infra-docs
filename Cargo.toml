@@ -46,7 +46,12 @@ sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono", "js
 # 9.x 存在一处类型混淆可能导致鉴权绕过的漏洞（GHSA，见 Dependabot alert #3），10.3.0
 # 已修复；HS256 + 固定 secret 的最小用法（utils/jwt.rs）在 9→11 之间没有 API 变化，
 # 直接升到修复版本。
-jsonwebtoken = "11"
+#
+# v11 的破坏性变更：不再默认启用加密后端，必须在 `rust_crypto`（ring）与 `aws_lc_rs`
+# 二选一，否则首次签名/校验时会 panic（"Could not automatically determine the
+# process-level CryptoProvider"）。选 `rust_crypto`：纯 Rust 的 ring，跨平台构建
+# 不需要 aws-lc-rs 那套 C/CMake 工具链；HS256 场景两个后端行为一致。
+jsonwebtoken = { version = "11", features = ["rust_crypto"] }
 
 # 序列化
 serde = { version = "1", features = ["derive"] }

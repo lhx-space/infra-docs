@@ -1,9 +1,19 @@
 import {execFile} from 'node:child_process';
 import {Worker} from 'bullmq';
+import {cleanupExpiredDocumentExports} from './jobs/cleanup-expired-document-exports';
 import {cleanupOrphanVideoAssets} from './jobs/cleanup-orphan-video-assets';
+import {processDocumentExportPdfJob} from './jobs/process-document-export-pdf';
 import {processVideoTranscodeJob} from './jobs/process-video-transcode';
 import {logger} from './logger';
 import {queueConnection} from './queue/connection';
+import {
+  DOCUMENT_EXPORT_CLEANUP_CONCURRENCY,
+  DOCUMENT_EXPORT_CLEANUP_QUEUE_NAME,
+  DOCUMENT_EXPORT_PDF_CONCURRENCY,
+  DOCUMENT_EXPORT_PDF_QUEUE_NAME,
+  type DocumentExportPdfJobData,
+  scheduleDocumentExportCleanup
+} from './queue/document-export';
 import {
   scheduleOrphanVideoCleanup,
   VIDEO_CLEANUP_CONCURRENCY,
@@ -14,6 +24,7 @@ import {
   VIDEO_TRANSCODE_QUEUE_NAME,
   type VideoTranscodeJobData
 } from './queue/video-transcode';
+import {ensureDocumentExportStorageReady} from './services/document-export-storage';
 import {ensureVideoStorageReady} from './services/video-storage';
 
 /**
@@ -28,6 +39,10 @@ import {ensureVideoStorageReady} from './services/video-storage';
  * 谁先启动、甚至单独只起 `worker` 用于本地调试，都不会受影响。
  */
 void ensureVideoStorageReady();
+
+// 同上（幂等、失败只记录日志）：document-exports bucket 只有 worker 进程会写入
+// （PDF 产物上传），在 worker 侧确保存在即可
+void ensureDocumentExportStorageReady();
 
 /**
  * 独立的转码 worker 进程入口（见 design.md 决策 2：不与 HTTP API 共用进程，本地开发/生产
@@ -90,9 +105,66 @@ void scheduleOrphanVideoCleanup().catch(err => {
 
 logger.info('orphan video asset cleanup worker started');
 
+/**
+ * 文档导出 PDF worker（见 document-export design.md 决策 4/7）：跟视频转码 worker 共存
+ * 于同一进程，用独立队列/并发（`DOCUMENT_EXPORT_PDF_CONCURRENCY`，每个任务独占一个
+ * Chromium 实例），复用同一条 `queueConnection`。
+ */
+const documentExportWorker = new Worker<DocumentExportPdfJobData>(
+  DOCUMENT_EXPORT_PDF_QUEUE_NAME,
+  job => processDocumentExportPdfJob(job.data),
+  {
+    connection: queueConnection,
+    concurrency: DOCUMENT_EXPORT_PDF_CONCURRENCY
+  }
+);
+
+documentExportWorker.on('completed', job => {
+  logger.info({jobId: job.id, exportId: job.data.exportId}, 'document export pdf job completed');
+});
+documentExportWorker.on('failed', (job, err) => {
+  logger.error(
+    {jobId: job?.id, exportId: job?.data.exportId, err},
+    'document export pdf job failed'
+  );
+});
+
+logger.info({concurrency: DOCUMENT_EXPORT_PDF_CONCURRENCY}, 'document export pdf worker started');
+
+/**
+ * 超期导出清理 worker（见 design.md 决策 8）：结构对齐上面的孤儿视频清理 worker——
+ * 独立队列/并发，不占用 PDF 生成任务的并发名额。
+ */
+const documentExportCleanupWorker = new Worker(
+  DOCUMENT_EXPORT_CLEANUP_QUEUE_NAME,
+  () => cleanupExpiredDocumentExports(),
+  {
+    connection: queueConnection,
+    concurrency: DOCUMENT_EXPORT_CLEANUP_CONCURRENCY
+  }
+);
+
+documentExportCleanupWorker.on('completed', () => {
+  logger.info('expired document export cleanup run completed');
+});
+documentExportCleanupWorker.on('failed', (job, err) => {
+  logger.error({jobId: job?.id, err}, 'expired document export cleanup run failed');
+});
+
+void scheduleDocumentExportCleanup().catch(err => {
+  logger.error({err}, 'failed to schedule expired document export cleanup');
+});
+
+logger.info('expired document export cleanup worker started');
+
 const shutdown = async (signal: string): Promise<void> => {
   logger.info({signal}, 'worker shutting down');
-  await Promise.all([worker.close(), cleanupWorker.close()]);
+  await Promise.all([
+    worker.close(),
+    cleanupWorker.close(),
+    documentExportWorker.close(),
+    documentExportCleanupWorker.close()
+  ]);
   process.exit(0);
 };
 

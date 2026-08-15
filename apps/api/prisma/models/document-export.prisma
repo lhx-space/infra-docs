@@ -1,0 +1,38 @@
+// 文档导出任务的状态追踪表，只用于 PDF 这一条异步路径（见 document-export design.md 决策 7）：
+// Markdown/Word 同步生成、同步返回文件，不落库、不占用队列资源。跟 `Document` 之间没有外键
+// 关系——同一份文档允许存在多条历史导出任务记录（即使已被清理产物本身，记录也可能短暂保留，
+// 见下方 `status` 注释），语义上更接近"一次性任务"而不是"文档的某个属性"，跟 `VideoAsset`
+// 与 `Document.content` 之间"松耦合、只存 id 引用"是同一种设计取向。
+enum DocumentExportFormat {
+  PDF
+}
+
+enum DocumentExportStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+model DocumentExport {
+  id         String               @id @default(uuid(7)) @db.Uuid
+  documentId String               @db.Uuid
+  // 目前只有 PDF 会创建这条记录（Markdown/Word 同步返回，见 design.md 决策 7），
+  // 保留这个字段是为将来其他格式也需要走异步路径时预留，不是当前就会有多个取值。
+  format     DocumentExportFormat @default(PDF)
+  status     DocumentExportStatus @default(PENDING)
+
+  // 产物在 `document-exports` 存储前缀下的 objectKey，只有 status = READY 时才有值
+  // （见 services/document-export-storage.ts）
+  objectKey String?
+  // 只有 status = FAILED 时才有值，供前端展示可读的失败原因
+  errorMessage String?
+
+  requestedBy String @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([documentId])
+  @@map("document_exports")
+}
