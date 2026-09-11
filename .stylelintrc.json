@@ -14,7 +14,8 @@
           "variants",
           "responsive",
           "plugin",
-          "config"
+          "config",
+          "source"
         ]
       }
     ],

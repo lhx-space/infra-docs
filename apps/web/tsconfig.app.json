@@ -18,7 +18,7 @@
 
     /* Path aliases */
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["../../packages/app/src/*"]
     },
 
     /* Linting */

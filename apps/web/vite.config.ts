@@ -9,7 +9,9 @@ export default defineConfig({
   plugins: [react(), babel({presets: [reactCompilerPreset()]}), tailwindcss()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      // 应用本体已抽到 packages/app，`@/` 别名指向它——包内源码仍用 `@/` 相对自身 src 引用，
+      // 宿主构建时需要把 `@` 解析到 packages/app/src（desktop 宿主同理）。
+      '@': path.resolve(__dirname, '../../packages/app/src')
     }
   }
 });

@@ -1,0 +1,33 @@
+{
+  "name": "@luhanxin/app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "dependencies": {
+    "@luhanxin/api-client": "workspace:*",
+    "@luhanxin/core": "workspace:*",
+    "@luhanxin/error-monitor": "workspace:*",
+    "@luhanxin/tiptap-editor": "workspace:*",
+    "@luhanxin/ui": "workspace:*",
+    "lucide-react": "^1.31.0",
+    "react-router-dom": "^7.18.2",
+    "sonner": "^2.0.8"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.2"
+  }
+}

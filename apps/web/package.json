@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@luhanxin/app": "workspace:*",
     "@luhanxin/error-monitor": "workspace:*",
     "@luhanxin/tiptap-editor": "workspace:*",
     "class-variance-authority": "^0.7.1",
