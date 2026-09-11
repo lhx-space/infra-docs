@@ -32,7 +32,8 @@ export function createApp(): Application {
           callback(null, true);
           return;
         }
-        callback(new Error('Not allowed by CORS'));
+        // 不在白名单：不设 Access-Control-Allow-Origin 头（浏览器侧拦截），不返回 500
+        callback(null, false);
       },
       credentials: true
     })
