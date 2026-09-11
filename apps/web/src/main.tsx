@@ -9,6 +9,6 @@ bootstrap({
   apiBaseUrl: import.meta.env.VITE_API_BASE_URL,
   collabWsUrl: import.meta.env.VITE_COLLAB_WS_URL,
   dev: import.meta.env.DEV,
-  appName: 'infra-docs',
+  appName: 'infra-docs-web',
   appVersion: '1.0.0'
 });
