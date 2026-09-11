@@ -5,6 +5,7 @@ import {createBrowserRouter, createHashRouter, RouterProvider} from 'react-route
 import {getRouterType} from '../runtime';
 import {buildRoutes} from './build-routes';
 import {syncDocumentTitle} from './document-title';
+import {RouteError} from './RouteError';
 import {routes} from './routes';
 
 /**
@@ -19,7 +20,13 @@ let cachedRouter: ReturnType<typeof createBrowserRouter> | null = null;
 
 function createAppRouter() {
   const createRouter = getRouterType() === 'hash' ? createHashRouter : createBrowserRouter;
-  const router = createRouter(buildRoutes(routes));
+  const router = createRouter([
+    {
+      // 根级 errorElement：接住路由未匹配（404）与 loader/action 抛错，替换默认错误页
+      errorElement: <RouteError />,
+      children: buildRoutes(routes)
+    }
+  ]);
   syncDocumentTitle(router);
   return router;
 }
