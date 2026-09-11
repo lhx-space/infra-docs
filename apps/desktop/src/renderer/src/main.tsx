@@ -9,9 +9,8 @@ bootstrap({
   apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000',
   collabWsUrl: import.meta.env.VITE_COLLAB_WS_URL ?? 'ws://localhost:4000/ws',
   dev: import.meta.env.DEV,
-  // 打包后 renderer 从 file:// 加载（见 main/index.ts 的 loadFile），BrowserRouter 在
-  // file:// 下拿不到可匹配的 pathname 会 404，必须用 hash 路由。
-  routerType: 'hash',
+  // 打包后 renderer 走自定义协议 luhanxin-docs-app://（见 main/index.ts 的 loadURL），
+  // 是 standard scheme，BrowserRouter 可以正常匹配路径，用默认的 browser 路由即可。
   appName: 'infra-docs-desktop',
   appVersion: '1.0.0'
 });
