@@ -17,8 +17,10 @@ const EnvSchema = z.object({
   REFRESH_TOKEN_SECRET: z.string(),
   ACCESS_TOKEN_TTL: z.string().default('15m'),
   REFRESH_TOKEN_TTL: z.string().default('7d'),
-  /** 前端页面 origin，用于 CORS 白名单 + 携带凭证（refresh cookie） */
-  CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  /** 前端页面 origin 白名单，逗号分隔，用于 CORS + 携带凭证（refresh cookie）。
+   * 5173 = apps/web 的 Vite dev server；5174 = apps/desktop 的 electron-vite renderer
+   * dev server（见 electron.vite.config.ts 里显式固定为 5174，避免跟 web 撞端口）。 */
+  CORS_ORIGIN: z.string().default('http://localhost:5173,http://localhost:5174'),
   /** MinIO 内部连接地址（SDK 读写用），与 MINIO_PUBLIC_URL 分开，见 design.md 决策 1 */
   MINIO_ENDPOINT: z.string().default('localhost'),
   MINIO_PORT: z.coerce.number().int().positive().default(9000),

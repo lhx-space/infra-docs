@@ -18,8 +18,25 @@ export function createApp(): Application {
       contentSecurityPolicy: false
     })
   );
-  // credentials: true 才能收发 httpOnly 的 refresh_token cookie；开启后 origin 不能为 '*'，必须显式指定前端地址
-  app.use(cors({origin: env.CORS_ORIGIN, credentials: true}));
+  // credentials: true 才能收发 httpOnly 的 refresh_token cookie；开启后 origin 不能为 '*'，
+  // 必须显式白名单。`env.CORS_ORIGIN` 是逗号分隔的多个前端地址（web 5173 / desktop 5174）。
+  // 无 Origin（同源请求、curl、main 进程代理）与 `null`（打包后 Electron 从 file:// 加载，
+  // 浏览器会带 `Origin: null`）直接放行。
+  const corsOrigins = env.CORS_ORIGIN.split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        if (!origin || origin === 'null' || corsOrigins.includes(origin)) {
+          callback(null, true);
+          return;
+        }
+        callback(new Error('Not allowed by CORS'));
+      },
+      credentials: true
+    })
+  );
   app.use(compression());
   app.use(express.json({limit: '1mb'}));
   app.use(express.urlencoded({extended: true}));

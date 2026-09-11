@@ -15,6 +15,12 @@ export default defineConfig({
         '@': resolve('../../packages/app/src')
       }
     },
-    plugins: [react(), tailwindcss()]
+    plugins: [react(), tailwindcss()],
+    server: {
+      // 固定桌面端 renderer dev server 端口为 5174，跟 apps/web 的 5173 错开，避免 Vite
+      // 自动加 1 导致 CORS 白名单（apps/api 的 CORS_ORIGIN）对不上。
+      port: 5174,
+      strictPort: true
+    }
   }
 });
