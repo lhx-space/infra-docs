@@ -8,6 +8,11 @@ export interface Team {
   isPersonal: boolean;
   createdAt: string;
   updatedAt: string;
+  /** 以下统计字段只在 `GET /teams/mine`（列表接口）返回；create/get/patch 等写接口的响应里没有，
+   * 因此声明为可选（见后端 models/team.ts 的 TeamListItem） */
+  memberCount?: number;
+  wikiCount?: number;
+  documentCount?: number;
 }
 
 export interface TeamMember {
@@ -38,6 +43,8 @@ export interface TeamWikiDirectoryEntry {
   coverImage: string | null;
   allowJoinRequest: boolean;
   isMember: boolean;
+  documentCount: number;
+  memberCount: number;
 }
 
 /**

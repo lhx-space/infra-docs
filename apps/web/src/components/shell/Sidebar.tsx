@@ -1,4 +1,4 @@
-import {BookOpen, ChevronsLeft, Home as HomeIcon, Pin, Plus, Search} from 'lucide-react';
+import {BookOpen, ChevronsLeft, Home as HomeIcon, Pin, Plus, Search, Users} from 'lucide-react';
 import {useEffect, useState} from 'react';
 import {Link, useLocation} from 'react-router-dom';
 import {SearchDialog} from '@/components/search/SearchDialog';
@@ -53,6 +53,7 @@ export function Sidebar() {
   const {handleResizeStart} = useResizable({width: sidebarWidth, onResize: setSidebarWidth});
 
   const isHomeActive = location.pathname === '/home';
+  const isTeamsActive = location.pathname === '/teams' || location.pathname.startsWith('/teams/');
   const isAllWikisActive = location.pathname === '/wiki';
 
   return (
@@ -101,6 +102,17 @@ export function Sidebar() {
           >
             <HomeIcon className="size-4" />
             Home
+          </Link>
+
+          <Link
+            to="/teams"
+            className={cn(
+              'flex items-center gap-2 rounded-md border-l-2 border-transparent px-3 py-2 text-sm hover:bg-sidebar-accent',
+              isTeamsActive && 'border-sidebar-primary bg-sidebar-accent font-medium'
+            )}
+          >
+            <Users className="size-4" />
+            团队
           </Link>
 
           {pinnedWikiIds.length > 0 ? (

@@ -5,6 +5,7 @@ import {
   deleteTeam as deleteTeamModel,
   findTeamById,
   listTeamsByUserId,
+  type TeamListItem,
   updateTeamName
 } from '../models/team';
 import {
@@ -49,7 +50,8 @@ export async function createTeam(userId: string, name: string): Promise<Team> {
   });
 }
 
-export function listMyTeams(userId: string): Promise<Team[]> {
+/** 附带成员数/Wiki 数/文档总数，供前端团队数据看板表格展示 */
+export function listMyTeams(userId: string): Promise<TeamListItem[]> {
   return listTeamsByUserId(userId);
 }
 

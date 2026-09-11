@@ -10,12 +10,53 @@ export function findWikiById(id: string, client: Client = prisma): Promise<Wiki 
   return client.wiki.findUnique({where: {id}});
 }
 
-/** 通过 WikiMember 反查当前用户所在的所有工作区，按工作区更新时间倒序（见 design.md 决策 3） */
-export function listWikisByUserId(userId: string): Promise<Wiki[]> {
-  return prisma.wiki.findMany({
+/** Wiki 列表项：在裸 `Wiki` 实体之上附加统计字段（文档数/成员数/最近活动时间），
+ * 供前端数据看板表格展示。`lastActivityAt` 必须取 `max(documents.updatedAt)`——文档编辑走
+ * `updateDocument`(REST) 或 `syncContentFromCollab`(gRPC)，只更新 `documents.updatedAt`，
+ * 不会回写 `wikis.updatedAt`，直接用后者会漏掉纯内容编辑造成的"最近更新"。 */
+export interface WikiListItem extends Wiki {
+  documentCount: number;
+  memberCount: number;
+  lastActivityAt: Date | null;
+}
+
+/** 通过 WikiMember 反查当前用户所在的所有工作区，按工作区更新时间倒序（见 design.md 决策 3）。
+ * 统计字段用一次 `_count`（文档数/成员数）+ 一次 `groupBy(_max: updatedAt)`（最近文档更新时间）
+ * 合并得到，避免对每个 Wiki 各自发 N 次 count/findFirst。 */
+export async function listWikisByUserId(userId: string): Promise<WikiListItem[]> {
+  const wikis = await prisma.wiki.findMany({
     where: {members: {some: {userId}}},
-    orderBy: {updatedAt: 'desc'}
+    orderBy: {updatedAt: 'desc'},
+    include: {_count: {select: {documents: true, members: true}}}
   });
+
+  const wikiIds = wikis.map(w => w.id);
+  const activityRows =
+    wikiIds.length === 0
+      ? []
+      : await prisma.document.groupBy({
+          by: ['wikiId'],
+          where: {wikiId: {in: wikiIds}},
+          _max: {updatedAt: true}
+        });
+  const activityMap = new Map<string, Date | null>(
+    activityRows.map(row => [row.wikiId, row._max.updatedAt])
+  );
+
+  return wikis.map(w => ({
+    id: w.id,
+    name: w.name,
+    description: w.description,
+    coverImage: w.coverImage,
+    ownerId: w.ownerId,
+    teamId: w.teamId,
+    allowJoinRequest: w.allowJoinRequest,
+    createdAt: w.createdAt,
+    updatedAt: w.updatedAt,
+    documentCount: w._count.documents,
+    memberCount: w._count.members,
+    lastActivityAt: activityMap.get(w.id) ?? null
+  }));
 }
 
 export interface UpdateWikiInfoInput {
@@ -36,6 +77,8 @@ export interface WikiTeamDirectoryEntry {
   coverImage: string | null;
   allowJoinRequest: boolean;
   isMember: boolean;
+  documentCount: number;
+  memberCount: number;
 }
 
 /**
@@ -55,7 +98,8 @@ export async function listWikiDirectoryByTeam(
       description: true,
       coverImage: true,
       allowJoinRequest: true,
-      members: {where: {userId}, select: {id: true}}
+      members: {where: {userId}, select: {id: true}},
+      _count: {select: {documents: true, members: true}}
     },
     orderBy: {updatedAt: 'desc'}
   });
@@ -66,7 +110,9 @@ export async function listWikiDirectoryByTeam(
     description: wiki.description,
     coverImage: wiki.coverImage,
     allowJoinRequest: wiki.allowJoinRequest,
-    isMember: wiki.members.length > 0
+    isMember: wiki.members.length > 0,
+    documentCount: wiki._count.documents,
+    memberCount: wiki._count.members
   }));
 }
 

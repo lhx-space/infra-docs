@@ -1,5 +1,6 @@
 import {useEffect, useState} from 'react';
-import {Link, useParams} from 'react-router-dom';
+import {useNavigate, useParams} from 'react-router-dom';
+import {DataTable, type DataTableColumn} from '@/components/shared/DataTable';
 import {EmptyState} from '@/components/shared/EmptyState';
 import {PageHeader} from '@/components/shell/PageHeaderContext';
 import {Button} from '@/components/ui/button';
@@ -9,12 +10,13 @@ import {useTeamStore} from '@/store/team';
 import {useWikiStore} from '@/store/wiki';
 
 /**
- * 团队工作区目录：只展示元信息（名称/简介/封面），不包含文档内容或成员名单——
+ * 团队工作区目录：以数据表展示元信息（名称/简介/成员数/文档数），不含文档内容或成员名单——
  * 这是"仅元信息可见"边界在前端的体现（见 spec.md「团队成员可浏览团队内工作区目录」）。
  * 已是成员的直接展示"进入"，未开放申请的只展示提示，已开放申请的展示"申请加入"。
  */
 export default function TeamWikiDirectory() {
   const {teamId} = useParams<{teamId: string}>();
+  const navigate = useNavigate();
   const listTeamWikis = useTeamStore(state => state.listTeamWikis);
   const createJoinRequest = useWikiStore(state => state.createJoinRequest);
 
@@ -46,6 +48,60 @@ export default function TeamWikiDirectory() {
     }
   }
 
+  const columns: Array<DataTableColumn<TeamWikiDirectoryEntry>> = [
+    {
+      key: 'name',
+      header: '名称',
+      render: wiki => <span className="font-medium">{wiki.name}</span>
+    },
+    {
+      key: 'description',
+      header: '简介',
+      className: 'max-w-[280px]',
+      render: wiki => (
+        <span className="block truncate text-muted-foreground">{wiki.description || '—'}</span>
+      )
+    },
+    {
+      key: 'members',
+      header: '成员',
+      className: 'text-right',
+      render: wiki => <span className="tabular-nums">{wiki.memberCount}</span>
+    },
+    {
+      key: 'documents',
+      header: '文档',
+      className: 'text-right',
+      render: wiki => <span className="tabular-nums">{wiki.documentCount}</span>
+    },
+    {
+      key: 'actions',
+      header: '',
+      className: 'w-28 text-right',
+      render: wiki => {
+        if (wiki.isMember) {
+          return (
+            <Button variant="outline" size="sm" onClick={() => navigate(`/wiki/${wiki.id}`)}>
+              进入
+            </Button>
+          );
+        }
+        if (wiki.allowJoinRequest) {
+          return (
+            <Button
+              size="sm"
+              disabled={pendingWikiId === wiki.id || requestedIds.has(wiki.id)}
+              onClick={() => void handleRequestJoin(wiki.id)}
+            >
+              {requestedIds.has(wiki.id) ? '已申请' : '申请加入'}
+            </Button>
+          );
+        }
+        return <span className="text-xs text-muted-foreground">未开放申请</span>;
+      }
+    }
+  ];
+
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
       <PageHeader title="团队工作区" />
@@ -53,42 +109,11 @@ export default function TeamWikiDirectory() {
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       {loading ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">加载中...</p>
+        <DataTable columns={columns} rows={[]} rowKey={wiki => wiki.id} loading />
       ) : wikis.length === 0 ? (
         <EmptyState title="暂无工作区" description="这个团队下还没有任何 Wiki" />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {wikis.map(wiki => (
-            <div key={wiki.id} className="flex flex-col gap-3 rounded-lg border p-3">
-              <div className="aspect-video overflow-hidden rounded-md bg-muted">
-                {wiki.coverImage ? (
-                  <img src={wiki.coverImage} alt={wiki.name} className="size-full object-cover" />
-                ) : null}
-              </div>
-              <p className="truncate text-sm font-medium">{wiki.name}</p>
-              {wiki.description ? (
-                <p className="line-clamp-2 text-xs text-muted-foreground">{wiki.description}</p>
-              ) : null}
-              {wiki.isMember ? (
-                <Link to={`/wiki/${wiki.id}`}>
-                  <Button variant="outline" size="sm" className="w-full">
-                    进入
-                  </Button>
-                </Link>
-              ) : wiki.allowJoinRequest ? (
-                <Button
-                  size="sm"
-                  disabled={pendingWikiId === wiki.id || requestedIds.has(wiki.id)}
-                  onClick={() => void handleRequestJoin(wiki.id)}
-                >
-                  {requestedIds.has(wiki.id) ? '已申请' : '申请加入'}
-                </Button>
-              ) : (
-                <p className="text-xs text-muted-foreground">未开放申请</p>
-              )}
-            </div>
-          ))}
-        </div>
+        <DataTable columns={columns} rows={wikis} rowKey={wiki => wiki.id} />
       )}
     </div>
   );

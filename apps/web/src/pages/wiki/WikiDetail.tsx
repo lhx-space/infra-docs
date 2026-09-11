@@ -1,12 +1,14 @@
-import {FilePlus} from 'lucide-react';
-import {useEffect, useState} from 'react';
+import {FilePlus, FileText, Plus, Trash2} from 'lucide-react';
+import {useEffect, useMemo, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
 import {toast} from 'sonner';
+import {ConfirmDialog} from '@/components/shared/ConfirmDialog';
+import {DataTable, type DataTableColumn} from '@/components/shared/DataTable';
 import {EmptyState} from '@/components/shared/EmptyState';
 import {PageHeader} from '@/components/shell/PageHeaderContext';
 import {Button} from '@/components/ui/button';
-import {DocumentTreeList} from '@/components/wiki/DocumentTreeList';
-import {buildDocumentTree} from '@/lib/document-tree';
+import {buildDocumentTree, type FlattenedDocument, flattenDocumentTree} from '@/lib/document-tree';
+import {formatDateTime} from '@/lib/format';
 import {ApiError} from '@/network';
 import {useDocumentStore, useDocumentTree} from '@/store/document';
 import {useTeamStore} from '@/store/team';
@@ -14,8 +16,9 @@ import type {Wiki, WikiRole} from '@/store/wiki';
 import {useWikiStore} from '@/store/wiki';
 
 /**
- * Wiki 详情页：展示该 Wiki 下的文档树，并提供创建顶层文档入口（见 wiki-document/document-editor
- * spec.md「Wiki 详情页展示真实文档树与创建入口」，替代此前"暂无文章"的固定占位）。
+ * Wiki 详情页：展示该 Wiki 下的文档数据表（标题按树层级缩进 + 更新时间/创建时间，点行进入
+ * 编辑器），并提供创建顶层文档入口（见 wiki-document/document-editor spec.md「Wiki 详情页
+ * 展示真实文档树与创建入口」，此处由树列表升级为数据表以承载更新时间/创建时间等后台数据）。
  *
  * 这里承担的关键职责是"跨团队打开静默跟随切换"——如果通过搜索结果/分享链接/直接访问 URL
  * 打开的这个 Wiki 归属的团队跟 Sidebar 当前选中的团队不一致，静默把 `currentTeamId` 切换
@@ -31,9 +34,12 @@ export default function WikiDetail() {
   const documents = useDocumentTree(wikiId);
   const fetchDocuments = useDocumentStore(state => state.fetchDocuments);
   const createDocument = useDocumentStore(state => state.createDocument);
+  const deleteDocument = useDocumentStore(state => state.deleteDocument);
 
   const [wiki, setWiki] = useState<Wiki | null>(null);
   const [role, setRole] = useState<WikiRole | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!wikiId) return;
@@ -56,22 +62,95 @@ export default function WikiDetail() {
     if (wiki.teamId !== currentTeamId) setCurrentTeamId(wiki.teamId);
   }, [wiki, currentTeamId, setCurrentTeamId]);
 
+  const canCreate = role === 'OWNER' || role === 'EDITOR';
+  const tree = useMemo(() => buildDocumentTree(documents), [documents]);
+  const rows = useMemo(() => flattenDocumentTree(tree), [tree]);
+
   if (!wikiId) return null;
 
-  const canCreate = role === 'OWNER' || role === 'EDITOR';
-  const tree = buildDocumentTree(documents);
-
-  async function handleCreate(): Promise<void> {
+  async function handleCreate(parentId?: string): Promise<void> {
     // wikiId 在这里理应必定存在（组件顶部已经 `if (!wikiId) return null` 提前退出），
     // 但这个 narrowing 不会跨越嵌套函数边界传递给 TS——嵌套 function 是延迟调用的闭包，
     // TS 无法保证外部变量到实际调用时刻仍是同一个窄化后的值，因此在这里本地再判断一次。
     if (!wikiId) return;
     try {
-      const document = await createDocument(wikiId, {});
+      const document = await createDocument(wikiId, {parentId});
       navigate(`/wiki/${wikiId}/documents/${document.id}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : '创建文档失败，请稍后重试');
     }
+  }
+
+  async function handleDelete(): Promise<void> {
+    if (!wikiId || !pendingDeleteId) return;
+    const nodeId = pendingDeleteId;
+    setDeleting(true);
+    try {
+      await deleteDocument(wikiId, nodeId);
+      toast.success('已删除');
+      setPendingDeleteId(null);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : '删除失败，请稍后重试');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const columns: Array<DataTableColumn<FlattenedDocument>> = [
+    {
+      key: 'title',
+      header: '标题',
+      render: row => (
+        <span className="flex items-center gap-2 font-medium" style={{paddingLeft: row.depth * 16}}>
+          <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate">{row.title}</span>
+        </span>
+      )
+    },
+    {
+      key: 'updatedAt',
+      header: '更新时间',
+      render: row => <span className="text-muted-foreground">{formatDateTime(row.updatedAt)}</span>
+    },
+    {
+      key: 'createdAt',
+      header: '创建时间',
+      render: row => <span className="text-muted-foreground">{formatDateTime(row.createdAt)}</span>
+    }
+  ];
+
+  if (canCreate) {
+    columns.push({
+      key: 'actions',
+      header: '',
+      className: 'w-20 text-right',
+      render: row => (
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="新建子文档"
+            onClick={e => {
+              e.stopPropagation();
+              void handleCreate(row.id);
+            }}
+          >
+            <Plus className="size-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="删除文档"
+            onClick={e => {
+              e.stopPropagation();
+              setPendingDeleteId(row.id);
+            }}
+          >
+            <Trash2 className="size-3.5 text-destructive" />
+          </Button>
+        </div>
+      )
+    });
   }
 
   const createButton = canCreate ? (
@@ -85,17 +164,29 @@ export default function WikiDetail() {
     <div className="flex flex-1 flex-col gap-6 p-6">
       <PageHeader title={wiki?.name ?? 'Wiki'} actions={createButton} />
 
-      {tree.length === 0 ? (
+      {rows.length === 0 ? (
         <EmptyState
           title="这个 Wiki 下还没有任何文档"
           description={canCreate ? '创建第一篇文档，开始记录内容' : '当前没有可查看的文档'}
           action={createButton}
         />
       ) : (
-        <div className="max-w-md">
-          <DocumentTreeList wikiId={wikiId} nodes={tree} />
-        </div>
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={row => row.id}
+          onRowClick={row => navigate(`/wiki/${wikiId}/documents/${row.id}`)}
+        />
       )}
+
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={open => !open && setPendingDeleteId(null)}
+        title="删除文档"
+        description="删除后该文档及其全部子文档、历史版本都无法恢复，确认删除吗？"
+        loading={deleting}
+        onConfirm={() => void handleDelete()}
+      />
     </div>
   );
 }

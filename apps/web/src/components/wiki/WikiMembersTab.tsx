@@ -1,9 +1,11 @@
 import {Check, Copy, Loader2, Trash2, UserPlus, X} from 'lucide-react';
 import {useEffect, useState} from 'react';
 import {toast} from 'sonner';
+import {DataTable, type DataTableColumn} from '@/components/shared/DataTable';
 import {Button} from '@/components/ui/button';
 import {Input} from '@/components/ui/input';
 import {Label} from '@/components/ui/label';
+import {formatDateTime} from '@/lib/format';
 import {ApiError} from '@/network';
 import type {TeamMember} from '@/store/team';
 import {useTeamStore} from '@/store/team';
@@ -173,6 +175,62 @@ export function WikiMembersTab({wiki, canManage, currentRole}: WikiMembersTabPro
     }
   }
 
+  const columns: Array<DataTableColumn<WikiMember>> = [
+    {
+      key: 'user',
+      header: '成员',
+      render: member => (
+        <span className="font-medium">{member.user?.username ?? member.userId}</span>
+      )
+    },
+    {
+      key: 'role',
+      header: '角色',
+      render: member =>
+        canManage ? (
+          <select
+            value={member.role}
+            disabled={pendingUserId === member.userId}
+            onChange={e => void handleRoleChange(member.userId, e.target.value as WikiRole)}
+            className={SELECT_CLASS}
+          >
+            {ROLE_OPTIONS.map(role => (
+              <option key={role} value={role}>
+                {role}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="text-muted-foreground">{member.role}</span>
+        )
+    },
+    {
+      key: 'createdAt',
+      header: '加入时间',
+      render: member => (
+        <span className="text-muted-foreground">{formatDateTime(member.createdAt)}</span>
+      )
+    },
+    {
+      key: 'actions',
+      header: '',
+      className: 'w-12 text-right',
+      render: member =>
+        canManage ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label="移除成员"
+            disabled={pendingUserId === member.userId}
+            onClick={() => void handleRemove(member.userId)}
+          >
+            <Trash2 className="size-3.5 text-destructive" />
+          </Button>
+        ) : null
+    }
+  ];
+
   return (
     <div className="flex flex-col gap-4 py-2">
       {canManage && joinRequests.length > 0 ? (
@@ -261,47 +319,7 @@ export function WikiMembersTab({wiki, canManage, currentRole}: WikiMembersTabPro
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-      {loading ? (
-        <p className="py-4 text-center text-sm text-muted-foreground">加载中...</p>
-      ) : (
-        <div className="flex flex-col divide-y rounded-md border">
-          {members.map(member => (
-            <div key={member.id} className="flex items-center justify-between gap-2 px-3 py-2">
-              <span className="truncate text-sm">{member.user?.username ?? member.userId}</span>
-              <div className="flex items-center gap-2">
-                {canManage ? (
-                  <select
-                    value={member.role}
-                    disabled={pendingUserId === member.userId}
-                    onChange={e => void handleRoleChange(member.userId, e.target.value as WikiRole)}
-                    className={SELECT_CLASS}
-                  >
-                    {ROLE_OPTIONS.map(role => (
-                      <option key={role} value={role}>
-                        {role}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <span className="text-xs text-muted-foreground">{member.role}</span>
-                )}
-                {canManage ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    aria-label="移除成员"
-                    disabled={pendingUserId === member.userId}
-                    onClick={() => void handleRemove(member.userId)}
-                  >
-                    <Trash2 className="size-3.5 text-destructive" />
-                  </Button>
-                ) : null}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <DataTable columns={columns} rows={members} rowKey={member => member.id} loading={loading} />
 
       <div className="flex flex-col gap-2 rounded-md border p-3">
         <p className="text-sm font-medium">分享链接</p>

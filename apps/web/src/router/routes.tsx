@@ -59,6 +59,11 @@ export const routes: AppRouteConfig[] = [
         meta: {title: '文档'}
       },
       {
+        path: '/teams',
+        component: () => import('@/pages/team/TeamList'),
+        meta: {title: '团队'}
+      },
+      {
         path: '/teams/:teamId/wikis',
         component: () => import('@/pages/team/TeamWikiDirectory'),
         meta: {title: '团队工作区'}

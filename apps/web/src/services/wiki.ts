@@ -12,6 +12,11 @@ export interface Wiki {
   allowJoinRequest: boolean;
   createdAt: string;
   updatedAt: string;
+  /** 以下统计字段只在 `GET /wikis`（列表接口）返回；create/get/patch 等写接口的响应里没有，
+   * 因此声明为可选，消费方不能假设它们总是存在（见后端 models/wiki.ts 的 WikiListItem） */
+  documentCount?: number;
+  memberCount?: number;
+  lastActivityAt?: string | null;
 }
 
 export interface WikiMember {

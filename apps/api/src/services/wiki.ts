@@ -9,7 +9,8 @@ import {
   listWikisByUserId,
   updateWikiInfo as updateWikiInfoModel,
   updateWikiOwner,
-  updateWikiTeam
+  updateWikiTeam,
+  type WikiListItem
 } from '../models/wiki';
 import {
   countOwners,
@@ -100,8 +101,8 @@ export async function transferWikiTeam(
   return updateWikiTeam(wikiId, newTeamId);
 }
 
-/** 只返回当前用户是成员的工作区，按更新时间倒序（见 design.md 决策 3） */
-export function listMyWikis(userId: string): Promise<Wiki[]> {
+/** 只返回当前用户是成员的工作区，按更新时间倒序（见 design.md 决策 3），附带文档数/成员数/最近活动时间 */
+export function listMyWikis(userId: string): Promise<WikiListItem[]> {
   return listWikisByUserId(userId);
 }
 

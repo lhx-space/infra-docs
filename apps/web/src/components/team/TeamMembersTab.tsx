@@ -1,7 +1,9 @@
 import {Trash2} from 'lucide-react';
 import {useEffect, useState} from 'react';
 import {toast} from 'sonner';
+import {DataTable, type DataTableColumn} from '@/components/shared/DataTable';
 import {Button} from '@/components/ui/button';
+import {formatDateTime} from '@/lib/format';
 import {ApiError} from '@/network';
 import {useAuthStore} from '@/store/auth';
 import type {Team, TeamMember, TeamRole} from '@/store/team';
@@ -70,60 +72,76 @@ export function TeamMembersTab({team, canManage}: TeamMembersTabProps) {
     }
   }
 
+  const columns: Array<DataTableColumn<TeamMember>> = [
+    {
+      key: 'user',
+      header: '成员',
+      render: member => {
+        const isSelf = member.userId === currentUserId;
+        return (
+          <span className="font-medium">
+            {member.user?.username ?? member.userId}
+            {isSelf ? <span className="ml-1 text-xs text-muted-foreground">(我)</span> : null}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'role',
+      header: '角色',
+      render: member =>
+        canManage ? (
+          <select
+            value={member.role}
+            disabled={pendingUserId === member.userId}
+            onChange={e => void handleRoleChange(member.userId, e.target.value as TeamRole)}
+            className={SELECT_CLASS}
+          >
+            {ROLE_OPTIONS.map(role => (
+              <option key={role} value={role}>
+                {role}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="text-muted-foreground">{member.role}</span>
+        )
+    },
+    {
+      key: 'createdAt',
+      header: '加入时间',
+      render: member => (
+        <span className="text-muted-foreground">{formatDateTime(member.createdAt)}</span>
+      )
+    },
+    {
+      key: 'actions',
+      header: '',
+      className: 'w-12 text-right',
+      render: member => {
+        const isSelf = member.userId === currentUserId;
+        if (!canManage && !isSelf) return null;
+        return (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={isSelf ? '退出团队' : '移除成员'}
+            disabled={pendingUserId === member.userId}
+            onClick={() => void handleRemove(member.userId)}
+          >
+            <Trash2 className="size-3.5 text-destructive" />
+          </Button>
+        );
+      }
+    }
+  ];
+
   return (
     <div className="flex flex-col gap-4 py-2">
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-      {loading ? (
-        <p className="py-4 text-center text-sm text-muted-foreground">加载中...</p>
-      ) : (
-        <div className="flex flex-col divide-y rounded-md border">
-          {members.map(member => {
-            const isSelf = member.userId === currentUserId;
-            const canActOnThis = canManage || isSelf;
-            return (
-              <div key={member.id} className="flex items-center justify-between gap-2 px-3 py-2">
-                <span className="truncate text-sm">
-                  {member.user?.username ?? member.userId}
-                  {isSelf ? <span className="ml-1 text-xs text-muted-foreground">(我)</span> : null}
-                </span>
-                <div className="flex items-center gap-2">
-                  {canManage ? (
-                    <select
-                      value={member.role}
-                      disabled={pendingUserId === member.userId}
-                      onChange={e =>
-                        void handleRoleChange(member.userId, e.target.value as TeamRole)
-                      }
-                      className={SELECT_CLASS}
-                    >
-                      {ROLE_OPTIONS.map(role => (
-                        <option key={role} value={role}>
-                          {role}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">{member.role}</span>
-                  )}
-                  {canActOnThis ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label={isSelf ? '退出团队' : '移除成员'}
-                      disabled={pendingUserId === member.userId}
-                      onClick={() => void handleRemove(member.userId)}
-                    >
-                      <Trash2 className="size-3.5 text-destructive" />
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <DataTable columns={columns} rows={members} rowKey={member => member.id} loading={loading} />
     </div>
   );
 }
