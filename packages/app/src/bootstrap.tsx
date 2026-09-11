@@ -5,7 +5,7 @@ import {createRootErrorHandlers} from '@luhanxin/error-monitor/react';
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App';
-import {setAppDevMode} from './runtime';
+import {type RouterType, setAppDevMode, setRouterType} from './runtime';
 import './styles/globals.css';
 import './styles/index.less';
 import '@luhanxin/tiptap-editor/styles.css';
@@ -15,6 +15,8 @@ export interface AppBootstrapOptions extends CoreConfig {
   dev?: boolean;
   appName?: string;
   appVersion?: string;
+  /** 路由模式：web 用 browser（默认），desktop 打包后（file:// 协议）必须用 hash */
+  routerType?: RouterType;
 }
 
 /**
@@ -23,6 +25,7 @@ export interface AppBootstrapOptions extends CoreConfig {
  */
 export function bootstrap(options: AppBootstrapOptions): void {
   setAppDevMode(options.dev ?? false);
+  setRouterType(options.routerType ?? 'browser');
   bootstrapCore(options);
 
   initErrorMonitor({
