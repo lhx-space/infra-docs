@@ -3,8 +3,7 @@ import {
   createPdfExport,
   downloadPdfExport,
   downloadSyncExport,
-  getDocumentExportStatus,
-  saveBlobFile
+  getDocumentExportStatus
 } from '@luhanxin/api-client';
 import type {Document, WikiRole} from '@luhanxin/core';
 import {
@@ -33,6 +32,7 @@ import {useNavigate, useParams} from 'react-router-dom';
 import {toast} from 'sonner';
 import {PageHeader} from '@/components/shell/PageHeaderContext';
 import {VersionHistoryDialog} from '@/components/wiki/VersionHistoryDialog';
+import {saveExportedFile} from '@/lib/save-file';
 
 /**
  * 文档编辑视图：挂载 `DocumentEditor`（大纲导航/全屏/图片上传/链接预览均由包内部
@@ -203,7 +203,7 @@ export default function DocumentEditorPage() {
     setSyncExporting(format);
     try {
       const blob = await downloadSyncExport(wikiId, documentId, format);
-      saveBlobFile(blob, `${title || '文档'}.${format === 'markdown' ? 'md' : 'docx'}`);
+      saveExportedFile(blob, `${title || '文档'}.${format === 'markdown' ? 'md' : 'docx'}`);
     } catch (err) {
       toast.error(exportErrorMessage(err, '导出失败，请稍后重试'));
     } finally {
@@ -254,7 +254,7 @@ export default function DocumentEditorPage() {
     if (!wikiId || !documentId) return;
     try {
       const blob = await downloadPdfExport(wikiId, documentId, exportId);
-      saveBlobFile(blob, `${title || '文档'}.pdf`);
+      saveExportedFile(blob, `${title || '文档'}.pdf`);
     } catch (err) {
       toast.error(exportErrorMessage(err, '下载失败，请稍后重试'));
     }

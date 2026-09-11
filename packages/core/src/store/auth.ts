@@ -1,6 +1,7 @@
 import type {AuthUser} from '@luhanxin/api-client';
 import * as authService from '@luhanxin/api-client';
-import {ApiError, refreshAccessToken} from '@luhanxin/api-client';
+import {ApiError, getMe, refreshAccessToken} from '@luhanxin/api-client';
+import {getDesktopBridge} from '@luhanxin/desktop-bridge';
 import {create} from 'zustand';
 import {getJwtExpiryMs} from '../lib/jwt';
 import {useDocumentStore} from './document';
@@ -96,6 +97,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setSession: (user, accessToken) => {
     set({user, accessToken, status: 'authenticated'});
     scheduleBackgroundRefresh(accessToken);
+    // 桌面端把 accessToken 落进系统钥匙串（safeStorage），供下次启动 cookie 失效时兜底恢复
+    void getDesktopBridge()?.setStoredToken(accessToken);
   },
 
   clearSession: () => {
@@ -111,13 +114,31 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     useTeamStore.getState().reset();
     useDocumentStore.getState().reset();
     set({user: null, accessToken: null, status: 'unauthenticated'});
+    // 桌面端登出/会话失效时一并清掉钥匙串里的 token
+    void getDesktopBridge()?.clearStoredToken();
   },
 
   initAuth: async () => {
     set({status: 'loading'});
-    // 利用 httpOnly 的 refresh_token cookie 静默换取新的 accessToken，恢复会话；
+    // 桌面端：先从钥匙串读上次的 token，作为 cookie 刷新失败后的兜底
+    const storedToken = await getDesktopBridge()?.getStoredToken();
+
+    // 主路径：利用 httpOnly 的 refresh_token cookie 静默换取新的 accessToken，恢复会话；
     // 复用 network/client.ts 的 refreshAccessToken，成功/失败时会自动调用 setSession/clearSession。
-    await refreshAccessToken();
+    const refreshed = await refreshAccessToken();
+    if (refreshed) return;
+
+    // 兜底：cookie 失效但钥匙串里还有上次的 token——先把 token 写进内存让 /me 请求能带上它，
+    // 再拉 /me 恢复 user；token 也过期则清掉回落未登录。
+    if (storedToken) {
+      set({accessToken: storedToken, status: 'authenticated'});
+      try {
+        const {user} = await getMe();
+        get().setSession(user, storedToken);
+      } catch {
+        get().clearSession();
+      }
+    }
   },
 
   login: async (identifier, password) => {

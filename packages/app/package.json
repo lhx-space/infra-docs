@@ -18,6 +18,7 @@
   "dependencies": {
     "@luhanxin/api-client": "workspace:*",
     "@luhanxin/core": "workspace:*",
+    "@luhanxin/desktop-bridge": "workspace:*",
     "@luhanxin/error-monitor": "workspace:*",
     "@luhanxin/tiptap-editor": "workspace:*",
     "@luhanxin/ui": "workspace:*",

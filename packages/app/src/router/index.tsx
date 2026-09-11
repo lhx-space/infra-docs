@@ -1,4 +1,5 @@
 import {useAuthStore} from '@luhanxin/core';
+import {getDesktopBridge} from '@luhanxin/desktop-bridge';
 import {useEffect} from 'react';
 import {createBrowserRouter, createHashRouter, RouterProvider} from 'react-router-dom';
 import {getRouterType} from '../runtime';
@@ -9,8 +10,7 @@ import {routes} from './routes';
 /**
  * 按宿主注入的 `routerType` 创建路由：
  * - browser：apps/web 用（干净路径 /wiki/...，依赖 http 服务器的 history fallback）。
- * - hash：apps/desktop 打包后用（`file://` 协议下 BrowserRouter 拿不到可匹配的 pathname，
- *   会直接 404，见 apps/desktop/src/main/index.ts 里 `loadFile` 的说明）。
+ * - hash：预留（`file://` 协议下 BrowserRouter 无法匹配 pathname，历史兜底方案）。
  *
  * 路由在首次渲染时懒创建一次（`routerType` 由 `bootstrap()` 注入，晚于模块 import、
  * 早于 React 渲染），并用模块级缓存保证 StrictMode 双渲染/双挂载不会重复建两个实例。
@@ -29,9 +29,29 @@ function getRouter() {
   return cachedRouter;
 }
 
+/** 把深链 url（luhanxin-docs-app://app/share-links/TOKEN）解析成前端路由路径 */
+function deepLinkPath(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'luhanxin-docs-app:') return null;
+    return parsed.pathname || '/';
+  } catch {
+    return null;
+  }
+}
+
 export function AppRouter() {
   useEffect(() => {
     void useAuthStore.getState().initAuth();
+
+    // 订阅桌面深链：收到 luhanxin-docs-app://... 时导航到对应路由（分享/邀请链接）
+    const bridge = getDesktopBridge();
+    const router = getRouter();
+    if (!bridge) return;
+    return bridge.onDeepLink(url => {
+      const path = deepLinkPath(url);
+      if (path) void router.navigate(path);
+    });
   }, []);
 
   return <RouterProvider router={getRouter()} />;

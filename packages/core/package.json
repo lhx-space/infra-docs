@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@luhanxin/api-client": "workspace:*",
+    "@luhanxin/desktop-bridge": "workspace:*",
     "@luhanxin/error-monitor": "workspace:*",
     "@luhanxin/tiptap-editor": "workspace:*",
     "y-indexeddb": "^9.0.12",

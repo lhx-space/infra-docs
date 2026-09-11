@@ -355,6 +355,9 @@ importers:
       '@luhanxin/core':
         specifier: workspace:*
         version: link:../core
+      '@luhanxin/desktop-bridge':
+        specifier: workspace:*
+        version: link:../desktop-bridge
       '@luhanxin/error-monitor':
         specifier: workspace:*
         version: link:../error-monitor
@@ -395,6 +398,9 @@ importers:
       '@luhanxin/api-client':
         specifier: workspace:*
         version: link:../api-client
+      '@luhanxin/desktop-bridge':
+        specifier: workspace:*
+        version: link:../desktop-bridge
       '@luhanxin/error-monitor':
         specifier: workspace:*
         version: link:../error-monitor
