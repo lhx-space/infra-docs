@@ -1,5 +1,7 @@
-appId: com.electron.app
-productName: '@luhanxin/desktop'
+# electron-builder 打包配置（见 apps/desktop/package.json 的 build:mac/win/linux）。
+# 产物由 `electron-vite build` 先产出到 out/，electron-builder 再按本文件打包成安装包。
+appId: com.lhxspace.infra-docs
+productName: Yjs Docs
 directories:
   buildResources: build
 files:
@@ -12,11 +14,13 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: '@luhanxin/desktop'
+  executableName: yjs-docs
+  target:
+    - nsis
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
-  shortcutName: ${productName}
-  uninstallDisplayName: ${productName}
+  artifactName: yjs-docs-${version}-setup.${ext}
+  shortcutName: Yjs Docs
+  uninstallDisplayName: Yjs Docs
   createDesktopShortcut: always
 mac:
   entitlementsInherit: build/entitlements.mac.plist
@@ -25,21 +29,28 @@ mac:
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  # 未配置 Apple 签名/公证凭证时保持 false，产物为未签名 dmg/zip（本地双击需右键打开）。
+  # 正式发布前接入 Apple 签名 + notarize 后再打开。
   notarize: false
+  target:
+    - dmg
+    - zip
 dmg:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: yjs-docs-${version}-${arch}.${ext}
 linux:
   target:
     - AppImage
-    - snap
     - deb
-  maintainer: electronjs.org
+  maintainer: lhx-space
   category: Utility
+  artifactName: yjs-docs-${version}-${arch}.${ext}
 appImage:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: yjs-docs-${version}-${arch}.${ext}
 npmRebuild: false
+# 供 electron-updater 自动更新使用（provider: github 需要 GH_TOKEN）。当前发布走
+# .github/workflows/release.yml 里 `--publish never` + softprops/action-gh-release，
+# 这里只声明 provider，自动更新后续接入时直接复用。
 publish:
-  provider: generic
-  url: https://example.com/auto-updates
-electronDownload:
-  mirror: https://npmmirror.com/mirrors/electron/
+  provider: github
+  owner: lhx-space
+  repo: infra-docs

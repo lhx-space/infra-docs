@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 #
 # apps/web 部署镜像：构建阶段需要整个 monorepo 上下文（workspace 依赖
-# @luhanxin/tiptap-editor、@luhanxin/error-monitor 走 pnpm 软链接，只挂 apps/web
-# 单目录解析不到），跟 apps/api/Dockerfile 是同一个原因。对应 docker-compose.yml 里
-# web service 用 `context: .` + `dockerfile: apps/web/Dockerfile`。
+# @luhanxin/app/core/ui/api-client/tiptap-editor/error-monitor 走 pnpm 软链接，
+# 只挂 apps/web 单目录解析不到），跟 apps/api/Dockerfile 是同一个原因。对应
+# docker-compose.yml 里 web service 用 `context: .` + `dockerfile: apps/web/Dockerfile`。
 #
 # 运行时只需要伺服 Vite 打出来的纯静态文件（SPA，没有服务端渲染），不需要常驻 Node
 # 进程，选专门做静态文件服务的镜像即可：
@@ -33,7 +33,10 @@ ARG VITE_COLLAB_WS_URL=ws://localhost:4000/ws
 ENV VITE_COLLAB_WS_URL=${VITE_COLLAB_WS_URL}
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter=@luhanxin/tiptap-editor... --filter=@luhanxin/error-monitor... --filter=web... run build
+# `--filter=web...` 会按拓扑序构建 web 及其全部 workspace 依赖（app/core/ui/api-client/
+# tiptap-editor/error-monitor）；app 是源码包（无 build script）会被自动跳过，其余包先出
+# tsup 的 dist，再轮到 web 的 tsc + vite build。
+RUN pnpm --filter=web... run build
 
 # ===== 默认运行时：nginx =====
 FROM nginx:1.27-alpine AS runtime

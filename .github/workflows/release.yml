@@ -1,0 +1,76 @@
+name: Release
+
+# 打 tag（v*）时触发：构建并发布 web Docker 镜像（GHCR）+ desktop 三平台安装包（GitHub Release）。
+# 用法：git tag v1.0.0 && git push origin v1.0.0
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # 创建 Release + 上传安装包
+  packages: write # 推送 GHCR 镜像
+
+jobs:
+  # ===== apps/web：构建镜像推送到 GHCR =====
+  web-docker:
+    name: Build & push web image (GHCR)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/lhx-space/infra-docs-web:latest
+            ghcr.io/lhx-space/infra-docs-web:${{ github.ref_name }}
+          # VITE_* 是 Vite 编译期常量，构建进产物；发布地址用仓库 Variables 覆盖，
+          # 未配置时退回本地默认值（见 apps/web/Dockerfile 顶部说明）。
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || 'http://localhost:3000' }}
+            VITE_COLLAB_WS_URL=${{ vars.VITE_COLLAB_WS_URL || 'ws://localhost:4000/ws' }}
+
+  # ===== apps/desktop：三平台安装包 =====
+  desktop:
+    name: Build desktop installer (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: mac
+          - os: ubuntu-latest
+            target: linux
+          - os: windows-latest
+            target: win
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # `...` 会连同 desktop 的 workspace 依赖（ui/api-client/core/tiptap-editor/error-monitor）
+      # 一起构建（tsup 产物），因为 renderer 现在 import 的是这些包的 dist。
+      - run: pnpm --filter=@luhanxin/desktop... run build
+      - name: Package installer
+        run: pnpm --filter @luhanxin/desktop exec electron-builder --${{ matrix.target }} --publish never
+        env:
+          # macOS 未配置签名凭证（CSC_LINK/CSC_KEY_PASSWORD）时产出未签名 dmg/zip。
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 每个平台各自上传安装包到同一个 Release（softprops v2 幂等：tag 已存在则只追加文件）。
+      - name: Upload installers to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: apps/desktop/dist/*
+          generate_release_notes: true

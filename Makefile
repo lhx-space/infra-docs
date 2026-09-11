@@ -2,6 +2,7 @@
         up up-full down logs ps \
         dev-collab check clippy fmt fmt-check test-rust build-rust \
         dev-web dev-api build-node lint lint-fix typecheck \
+        dev-desktop build-desktop package-desktop \
         proto-gen \
         build clean
 
@@ -85,6 +86,17 @@ lint-fix: ## 自动修复 lint 问题
 
 typecheck: ## TypeScript 全量类型检查
 	pnpm typecheck
+
+# ==== 桌面端 (apps/desktop, Electron) ====
+
+dev-desktop: ## 启动桌面端开发模式（electron-vite dev，需先 build 依赖包）
+	pnpm --filter @luhanxin/desktop dev
+
+build-desktop: ## 构建桌面端（typecheck + electron-vite build，产出 out/）
+	pnpm --filter @luhanxin/desktop... run build
+
+package-desktop: ## 打包桌面端安装包（electron-builder --dir，未签名，不发布）
+	pnpm --filter @luhanxin/desktop exec electron-builder --dir --publish never
 
 # ==== 服务间通信 (gRPC，见 design.md 决策 10) ====
 
