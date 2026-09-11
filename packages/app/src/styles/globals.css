@@ -2,10 +2,11 @@
 @import "tw-animate-css";
 
 /* 抽离成 workspace 包后，app/ui 源码不在宿主（apps/web、apps/desktop）的项目根目录里，
-   Tailwind v4 的自动内容探测不会扫到 node_modules 里的符号链接源码，这里显式声明扫描
-   app 自身与 ui 包，保证它们用到的 utility class 能被生成。 */
+   Tailwind v4 的自动内容探测不会扫到 node_modules 里的符号链接源码，这里显式声明扫描：
+   - app 自身仍是源码包（pages/shell 的 utility 从这里扫）
+   - ui 已用 tsup 构建成 dist，消费方 import 的是 dist/index.js，故扫 dist */
 @source "../**/*.{ts,tsx}";
-@source "../../../ui/src/**/*.{ts,tsx}";
+@source "../../../ui/dist";
 
 @custom-variant dark (&:is(.dark *));
 
