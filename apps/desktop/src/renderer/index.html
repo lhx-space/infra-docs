@@ -2,12 +2,26 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Electron</title>
-    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
-    />
+    <title>Yjs Docs</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      这里刻意不设置 CSP：应用会向可配置的 API/WebSocket 发请求、加载 MinIO/DiceBear 图片，
+      脚手架默认的 `default-src 'self'` 会把这些全部拦掉。开发期去掉 CSP；生产打包前再按
+      实际部署的 API/对象存储地址补一条精确的 CSP。
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme')
+          var isDark =
+            stored === 'dark' ||
+            (stored !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.classList.toggle('dark', isDark)
+        } catch {
+          /* localStorage 不可用时静默忽略，保持默认浅色 */
+        }
+      })()
+    </script>
   </head>
 
   <body>

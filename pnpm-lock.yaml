@@ -203,6 +203,9 @@ importers:
       '@electron-toolkit/utils':
         specifier: ^4.0.0
         version: 4.0.0(electron@39.8.10)
+      '@luhanxin/app':
+        specifier: workspace:*
+        version: link:../../packages/app
       electron-updater:
         specifier: ^6.3.9
         version: 6.8.9
@@ -216,6 +219,9 @@ importers:
       '@electron-toolkit/tsconfig':
         specifier: ^2.0.0
         version: 2.0.0(@types/node@22.20.1)
+      '@tailwindcss/vite':
+        specifier: ^4.3.3
+        version: 4.3.3(vite@7.3.6(@types/node@22.20.1)(jiti@2.7.0)(less@4.8.1)(lightningcss@1.33.0)(tsx@4.23.12)(yaml@2.9.0))
       '@types/node':
         specifier: ^22.19.1
         version: 22.20.1
@@ -249,6 +255,9 @@ importers:
       eslint-plugin-react-refresh:
         specifier: ^0.4.24
         version: 0.4.26(eslint@9.39.5(jiti@2.7.0))
+      less:
+        specifier: ^4.8.1
+        version: 4.8.1
       prettier:
         specifier: ^3.7.4
         version: 3.9.6
@@ -258,6 +267,12 @@ importers:
       react-dom:
         specifier: ^19.2.1
         version: 19.2.8(react@19.2.8)
+      tailwindcss:
+        specifier: ^4.3.3
+        version: 4.3.3
+      tw-animate-css:
+        specifier: ^1.4.0
+        version: 1.4.0
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -10102,6 +10117,13 @@ snapshots:
       '@tailwindcss/oxide-wasm32-wasi': 4.3.3
       '@tailwindcss/oxide-win32-arm64-msvc': 4.3.3
       '@tailwindcss/oxide-win32-x64-msvc': 4.3.3
+
+  '@tailwindcss/vite@4.3.3(vite@7.3.6(@types/node@22.20.1)(jiti@2.7.0)(less@4.8.1)(lightningcss@1.33.0)(tsx@4.23.12)(yaml@2.9.0))':
+    dependencies:
+      '@tailwindcss/node': 4.3.3
+      '@tailwindcss/oxide': 4.3.3
+      tailwindcss: 4.3.3
+      vite: 7.3.6(@types/node@22.20.1)(jiti@2.7.0)(less@4.8.1)(lightningcss@1.33.0)(tsx@4.23.12)(yaml@2.9.0)
 
   '@tailwindcss/vite@4.3.3(vite@8.2.1(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(less@4.8.1)(tsx@4.23.12)(yaml@2.9.0))':
     dependencies:
