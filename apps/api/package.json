@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "concurrently -n api,worker -c blue,magenta \"pnpm run dev:api\" \"pnpm run dev:worker\"",
     "dev:api": "tsx watch --env-file=.env.example src/server.ts",
+    "dev:api:debug": "tsx watch --inspect=9229 --env-file=.env.example src/server.ts",
     "dev:worker": "tsx watch --env-file=.env.example src/worker.ts",
     "build": "tsup",
     "start": "concurrently -n api,worker -c blue,magenta \"pnpm run start:api\" \"pnpm run start:worker\"",

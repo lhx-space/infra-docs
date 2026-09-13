@@ -1,6 +1,10 @@
 import type {NextFunction, Request, Response} from 'express';
 import {z} from 'zod';
 import * as documentService from '../services/document';
+import {
+  buildExportHtmlDocument,
+  replaceExportPlaceholderNodes
+} from '../services/document-export-html';
 import {validateDocumentContent} from '../utils/document-schema';
 import {isValidUuid} from '../utils/uuid';
 
@@ -47,6 +51,33 @@ export async function getDocumentHandler(
   try {
     const document = await documentService.getDocument(req.params['wikiId'] as string, documentId);
     res.json({document});
+  } catch (err) {
+    respondToServiceError(err, res, next);
+  }
+}
+
+/**
+ * 供移动端只读查看：把物化内容 JSON 转成自包含 HTML 文档字符串（复用 document-export 的
+ * HTML 中间层，见 services/document-export-html.ts），但不做 Mermaid 光栅化——那是 Word/PDF
+ * 导出专用的、需要启动浏览器的高成本步骤，移动端 WebView 里展示的是「正文 + 标题」的只读
+ * 视图，图表后续可在客户端 WebView 内用 mermaid.js 渲染。权限与 GET 文档接口一致（VIEWER）。
+ */
+export async function renderDocumentHandler(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  const documentId = req.params['documentId'];
+  if (!documentId || !isValidUuid(documentId)) {
+    res.status(404).json({error: 'not_found'});
+    return;
+  }
+
+  try {
+    const doc = await documentService.getDocument(req.params['wikiId'] as string, documentId);
+    const content = replaceExportPlaceholderNodes(doc.content);
+    const html = buildExportHtmlDocument(doc.title, content);
+    res.json({title: doc.title, html});
   } catch (err) {
     respondToServiceError(err, res, next);
   }

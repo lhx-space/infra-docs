@@ -1,3 +1,4 @@
+import {AUTH_MODE_BEARER, AUTH_MODE_HEADER} from '../config';
 import {http} from '../network';
 
 export interface AuthUser {
@@ -13,6 +14,9 @@ export interface AuthUser {
 export interface AuthResponse {
   user: AuthUser;
   accessToken: string;
+  /** bearer 模式（移动端）下由后端随响应返回，cookie 模式下无此字段 */
+  refreshToken?: string;
+  refreshTokenTtlSeconds?: number;
 }
 
 /**
@@ -43,4 +47,26 @@ export function register(
 /** 登出：吊销当前 refresh token；httpOnly cookie 由浏览器自动携带，无需前端手动处理 */
 export function logout(): Promise<unknown> {
   return http.post('/auth/logout');
+}
+
+/** 移动端登录：bearer 模式，refresh token 随响应 body 返回（移动端无 httpOnly cookie 可用） */
+export function loginBearer(identifier: string, password: string): Promise<AuthResponse> {
+  return http.post<AuthResponse>(
+    '/auth/login',
+    {identifier, password},
+    {
+      headers: {[AUTH_MODE_HEADER]: AUTH_MODE_BEARER}
+    }
+  );
+}
+
+/** 移动端登出：bearer 模式，refresh token 显式放在 body 里吊销 */
+export function logoutBearer(refreshToken: string | null): Promise<unknown> {
+  return http.post(
+    '/auth/logout',
+    {refreshToken},
+    {
+      headers: {[AUTH_MODE_HEADER]: AUTH_MODE_BEARER}
+    }
+  );
 }

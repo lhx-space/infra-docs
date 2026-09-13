@@ -4,6 +4,7 @@ import {
   deleteDocumentHandler,
   getDocumentHandler,
   listDocumentsHandler,
+  renderDocumentHandler,
   updateDocumentHandler
 } from '../handlers/document';
 import {
@@ -24,6 +25,11 @@ documentRouter.get(
   '/wikis/:wikiId/documents/:documentId',
   requireWikiRole('VIEWER'),
   getDocumentHandler
+);
+documentRouter.get(
+  '/wikis/:wikiId/documents/:documentId/render',
+  requireWikiRole('VIEWER'),
+  renderDocumentHandler
 );
 documentRouter.patch(
   '/wikis/:wikiId/documents/:documentId',

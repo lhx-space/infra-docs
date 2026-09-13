@@ -6,11 +6,20 @@ import type {AuthUser} from './services/auth';
  * 会话的落地都通过下面三个回调交回宿主侧（`packages/core` 的 `bootstrapCore` 会把它们接到
  * `store/auth.ts` 上），从而让 api-client 保持"纯 HTTP 客户端"的边界。
  */
+/** 移动端 bearer 鉴权模式的请求头：值需与后端 handlers/auth.ts 的 AUTH_MODE_HEADER 保持一致 */
+export const AUTH_MODE_HEADER = 'x-auth-mode';
+export const AUTH_MODE_BEARER = 'bearer';
+
 export interface ApiClientConfig {
   baseUrl: string;
   getAccessToken: () => string | null;
-  onSessionRefreshed: (user: AuthUser, accessToken: string) => void;
+  /** 会话刷新成功：第三个参数仅在 bearer 模式（移动端）下携带新的 refresh token */
+  onSessionRefreshed: (user: AuthUser, accessToken: string, refreshToken?: string) => void;
   onSessionExpired: () => void;
+  /** 鉴权模式：cookie（web/desktop，默认）或 bearer（移动端，refresh token 走 body） */
+  authMode?: 'cookie' | 'bearer';
+  /** bearer 模式：读取当前已存储的 refresh token（移动端 SecureStore） */
+  getRefreshToken?: () => string | null;
 }
 
 let config: ApiClientConfig | null = null;

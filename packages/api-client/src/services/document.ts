@@ -55,6 +55,16 @@ export function getDocument(wikiId: string, documentId: string): Promise<{docume
   return http.get<{document: Document}>(`/wikis/${wikiId}/documents/${documentId}`);
 }
 
+export interface DocumentRender {
+  title: string;
+  html: string;
+}
+
+/** 移动端只读渲染：把文档物化内容转成自包含 HTML（后端复用导出中间层，不做 Mermaid 光栅化） */
+export function renderDocument(wikiId: string, documentId: string): Promise<DocumentRender> {
+  return http.get<DocumentRender>(`/wikis/${wikiId}/documents/${documentId}/render`);
+}
+
 export function createDocument(
   wikiId: string,
   input: CreateDocumentInput

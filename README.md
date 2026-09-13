@@ -17,6 +17,7 @@ Multiple Teams, each owning multiple Wikis, each Wiki holding a tree of document
 - **Document version history** — collaborative editing sessions are aggregated into version snapshots following configurable rules; historical contributors remain traceable.
 - **Frontend error monitoring** — a unified error-reporting protocol covering render errors, runtime exceptions, unhandled promise rejections, resource load failures, network connection failures, and manual reports. See [`packages/error-monitor`](./packages/error-monitor).
 - **Desktop client** — an Electron-based desktop shell ([`apps/desktop`](./apps/desktop)).
+- **Mobile client** — a read-only browsing client built on Expo / React Native ([`apps/mobile`](./apps/mobile)): sign-in, Team/Wiki/document-tree browsing, read-only document rendering, and full-text search. Editing stays on web/desktop.
 
 ## Architecture
 
@@ -24,6 +25,8 @@ Multiple Teams, each owning multiple Wikis, each Wiki holding a tree of document
 flowchart LR
     subgraph Client
         web["apps/web<br/>React + Vite"]
+        desktop["apps/desktop<br/>Electron + React"]
+        mobile["apps/mobile<br/>Expo · React Native<br/>read-only"]
     end
 
     subgraph Backend
@@ -38,7 +41,10 @@ flowchart LR
     end
 
     web -- "REST (JSON)" --> api
+    desktop -- "REST (JSON)" --> api
+    mobile -- "REST (JSON)" --> api
     web -- "WebSocket (Yjs sync)" --> collab
+    desktop -- "WebSocket (Yjs sync)" --> collab
     collab -- "gRPC: role check / content sync" --> api
 
     api --> pg
@@ -48,6 +54,7 @@ flowchart LR
 ```
 
 - `apps/web` talks to `apps/collab-server` directly over WebSocket (`y-websocket`) for real-time document sync, and to `apps/api` over REST for everything else.
+- `apps/mobile` is read-only: it only talks to `apps/api` over REST and never connects to `apps/collab-server`.
 - `apps/collab-server` (Rust) and `apps/api` (Node) communicate over **gRPC**: the connection is authorized against `apps/api` on connect, and the latest content is synced back to Postgres on a periodic schedule.
 - `apps/api` also runs a separate `worker` process (BullMQ + Redis) for CPU-bound jobs such as video transcoding, kept out of the HTTP request path.
 
@@ -59,6 +66,7 @@ flowchart LR
 | [`apps/api`](./apps/api) | Express · Prisma (PostgreSQL) · BullMQ (Redis) · MinIO · gRPC · Pino |
 | [`apps/collab-server`](./apps/collab-server) | Rust · Axum · [yrs](https://github.com/y-crdt/y-crdt) / y-sync · Tonic (gRPC) |
 | [`apps/desktop`](./apps/desktop) | Electron · React |
+| [`apps/mobile`](./apps/mobile) | Expo · React Native · Expo Router · Zustand · WebView (read-only browsing) |
 | [`packages/tiptap-editor`](./packages/tiptap-editor) | [Tiptap](https://tiptap.dev/) 3 rich text editor wrapper (React), with collaboration, Mermaid, and video extensions |
 | [`packages/error-monitor`](./packages/error-monitor) | Framework-agnostic frontend error-monitoring SDK (core + React/Vue subpaths) |
 
@@ -70,8 +78,14 @@ flowchart LR
 │   ├── web/            — React + Vite frontend
 │   ├── api/             — Express API service (plus its worker process)
 │   ├── collab-server/   — Rust real-time collaboration service
-│   └── desktop/         — Electron desktop client
+│   ├── desktop/         — Electron desktop client
+│   └── mobile/          — Expo · React Native read-only browsing client
 ├── packages/
+│   ├── app/             — frontend application layer (pages/router/components, shared by web + desktop)
+│   ├── core/            — business logic + Zustand stores + Yjs collaboration hooks
+│   ├── api-client/      — pure HTTP client (REST service wrappers)
+│   ├── ui/              — Radix UI component library
+│   ├── desktop-bridge/  — Electron native-capability bridge (type contracts)
 │   ├── tiptap-editor/   — rich text editor wrapper
 │   └── error-monitor/   — frontend error-monitoring SDK
 ├── protos/               — gRPC .proto contracts shared by apps/api ↔ apps/collab-server
@@ -119,6 +133,17 @@ make dev-collab      # in a separate terminal: cargo run for the Rust collaborat
 | ws://localhost:4000/ws | `apps/collab-server` (Yjs WebSocket) |
 | http://localhost:9001 | MinIO console |
 
+### Run the mobile app (apps/mobile)
+
+`apps/mobile` is the read-only browsing client (Expo · React Native). Make sure `apps/api` is already running:
+
+```bash
+pnpm --filter @app/mobile run ios        # iOS simulator
+pnpm --filter @app/mobile run android    # Android emulator
+```
+
+The host address is selected per platform automatically (see `apps/mobile/src/lib/config.ts`): `localhost:3000` on the iOS simulator and `10.0.2.2:3000` on the Android emulator, so **no `.env` is needed for simulators**. For a real device, set `EXPO_PUBLIC_API_URL=http://<your-LAN-IP>:3000` in `apps/mobile/.env` (the phone and computer must be on the same network, and macOS must allow inbound connections to `node`).
+
 ### Run the full stack with Docker
 
 ```bash
@@ -137,6 +162,13 @@ pnpm dev             # parallel dev mode
 pnpm typecheck       # TypeScript check across the whole workspace
 pnpm lint            # biome + stylelint
 pnpm lint:fix        # auto-fix lint issues
+
+# Mobile
+pnpm --filter @app/mobile run ios        # iOS simulator
+pnpm --filter @app/mobile run android    # Android emulator
+
+# API breakpoint debugging (--inspect=9229, attach via .vscode/launch.json)
+pnpm --filter @app/api run dev:api:debug
 ```
 
 Rust side (`apps/collab-server`):

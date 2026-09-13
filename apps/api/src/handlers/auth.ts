@@ -11,6 +11,23 @@ export const REFRESH_TOKEN_COOKIE = 'refresh_token';
  */
 export const REFRESH_TOKEN_COOKIE_PATH = '/auth';
 
+/** 移动端等无法使用 httpOnly cookie 的客户端：用此请求头声明「refresh token 走请求/响应 body」的 bearer 模式 */
+export const AUTH_MODE_HEADER = 'x-auth-mode';
+const BEARER_MODE = 'bearer';
+
+function isBearerMode(req: Request): boolean {
+  return req.header(AUTH_MODE_HEADER)?.toLowerCase() === BEARER_MODE;
+}
+
+/** 按当前鉴权模式取 refresh token：bearer 模式从 body 读，否则从 cookie 读 */
+function readRefreshToken(req: Request): string | undefined {
+  if (isBearerMode(req)) {
+    const body = req.body as {refreshToken?: unknown} | undefined;
+    return typeof body?.refreshToken === 'string' ? body.refreshToken : undefined;
+  }
+  return (req.cookies as Record<string, string> | undefined)?.[REFRESH_TOKEN_COOKIE];
+}
+
 const registerSchema = z.object({
   email: z.string().email(),
   username: z.string().min(3).max(32),
@@ -79,6 +96,15 @@ export async function loginHandler(req: Request, res: Response, next: NextFuncti
 
   try {
     const {user, tokens} = await authService.login(parsed.data.identifier, parsed.data.password);
+    if (isBearerMode(req)) {
+      res.json({
+        user,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        refreshTokenTtlSeconds: tokens.refreshTokenTtlSeconds
+      });
+      return;
+    }
     setRefreshTokenCookie(res, tokens.refreshToken, tokens.refreshTokenTtlSeconds);
     res.json({user, accessToken: tokens.accessToken});
   } catch (err) {
@@ -91,7 +117,7 @@ export async function refreshHandler(
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  const refreshToken = (req.cookies as Record<string, string> | undefined)?.[REFRESH_TOKEN_COOKIE];
+  const refreshToken = readRefreshToken(req);
   if (!refreshToken) {
     res.status(401).json({error: 'invalid_refresh_token'});
     return;
@@ -99,6 +125,15 @@ export async function refreshHandler(
 
   try {
     const {user, tokens} = await authService.refresh(refreshToken);
+    if (isBearerMode(req)) {
+      res.json({
+        user,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        refreshTokenTtlSeconds: tokens.refreshTokenTtlSeconds
+      });
+      return;
+    }
     setRefreshTokenCookie(res, tokens.refreshToken, tokens.refreshTokenTtlSeconds);
     res.json({user, accessToken: tokens.accessToken});
   } catch (err) {
@@ -111,11 +146,13 @@ export async function logoutHandler(
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  const refreshToken = (req.cookies as Record<string, string> | undefined)?.[REFRESH_TOKEN_COOKIE];
+  const refreshToken = readRefreshToken(req);
 
   try {
     await authService.logout(refreshToken);
-    clearRefreshTokenCookie(res);
+    if (!isBearerMode(req)) {
+      clearRefreshTokenCookie(res);
+    }
     res.json({status: 'ok'});
   } catch (err) {
     respondToServiceError(err, res, next);

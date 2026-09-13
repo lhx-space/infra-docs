@@ -9,6 +9,7 @@ dist
 # Editor
 .vscode/*
 !.vscode/settings.json
+!.vscode/launch.json
 .idea
 
 # Test artifacts

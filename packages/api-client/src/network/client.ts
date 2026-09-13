@@ -1,4 +1,4 @@
-import {getApiClientConfig} from '../config';
+import {AUTH_MODE_BEARER, AUTH_MODE_HEADER, getApiClientConfig} from '../config';
 import type {AuthResponse} from '../services/auth';
 import {dedupe} from './dedupe';
 import {ApiError} from './errors';
@@ -13,6 +13,8 @@ interface RequestOptions {
   /** 可选的取消信号：调用方想在请求过程中主动放弃时传入（如组件卸载、搜索输入变化），
    * 传输层只负责透传给 fetch，不强加任何取消策略——由调用方决定要不要用、什么时候 abort */
   signal?: AbortSignal;
+  /** 额外请求头（如 bearer 鉴权模式的 `x-auth-mode`），与自动生成的 Content-Type/Authorization 合并 */
+  headers?: Record<string, string>;
 }
 
 /**
@@ -27,11 +29,28 @@ interface RequestOptions {
 export async function refreshAccessToken(): Promise<boolean> {
   return dedupe('auth:refresh', async () => {
     try {
+      const cfg = getApiClientConfig();
+      if (cfg.authMode === 'bearer') {
+        const refreshToken = cfg.getRefreshToken?.();
+        if (!refreshToken) {
+          cfg.onSessionExpired();
+          return false;
+        }
+        const data = await rawRequest<AuthResponse>('/auth/refresh', {
+          method: 'POST',
+          skipAuthRetry: true,
+          headers: {[AUTH_MODE_HEADER]: AUTH_MODE_BEARER},
+          body: {refreshToken}
+        });
+        cfg.onSessionRefreshed(data.user, data.accessToken, data.refreshToken);
+        return true;
+      }
+
       const data = await rawRequest<AuthResponse>('/auth/refresh', {
         method: 'POST',
         skipAuthRetry: true
       });
-      getApiClientConfig().onSessionRefreshed(data.user, data.accessToken);
+      cfg.onSessionRefreshed(data.user, data.accessToken);
       return true;
     } catch {
       getApiClientConfig().onSessionExpired();
@@ -41,7 +60,7 @@ export async function refreshAccessToken(): Promise<boolean> {
 }
 
 async function rawRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const {method = 'GET', body, skipAuthRetry = false} = options;
+  const {method = 'GET', body, skipAuthRetry = false, headers: extraHeaders} = options;
   const cfg = getApiClientConfig();
   const accessToken = cfg.getAccessToken();
 
@@ -49,7 +68,7 @@ async function rawRequest<T>(path: string, options: RequestOptions = {}): Promis
   // FormData（文件上传）不手动设置 Content-Type：浏览器需要自己生成带 boundary 的 multipart 头，
   // 手动设置反而会丢掉 boundary 导致后端 multer 解析失败。
   const isFormData = body instanceof FormData;
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {...extraHeaders};
   if (body !== undefined && !isFormData) headers['Content-Type'] = 'application/json';
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 

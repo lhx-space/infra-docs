@@ -17,6 +17,7 @@
 - **文档版本历史**：协同编辑会话按规则聚合成版本快照，历史编辑人可追溯。
 - **前端错误监控**：统一的错误上报协议（渲染错误/运行时异常/未捕获 Promise/资源加载失败/网络连接失败/手动上报），见 [`packages/error-monitor`](./packages/error-monitor)。
 - **桌面端**：基于 Electron 的桌面客户端（[`apps/desktop`](./apps/desktop)）。
+- **移动端**：基于 Expo / React Native 的只读浏览客户端（[`apps/mobile`](./apps/mobile)）——登录、团队/Wiki/文档树浏览、文档只读渲染、全文搜索；编辑能力保留在 web/desktop。
 
 ## 架构总览
 
@@ -24,6 +25,8 @@
 flowchart LR
     subgraph Client[客户端]
         web["apps/web<br/>React + Vite"]
+        desktop["apps/desktop<br/>Electron + React"]
+        mobile["apps/mobile<br/>Expo · React Native<br/>只读浏览"]
     end
 
     subgraph Backend[后端]
@@ -38,7 +41,10 @@ flowchart LR
     end
 
     web -- "REST (JSON)" --> api
+    desktop -- "REST (JSON)" --> api
+    mobile -- "REST (JSON)" --> api
     web -- "WebSocket（Yjs 同步）" --> collab
+    desktop -- "WebSocket（Yjs 同步）" --> collab
     collab -- "gRPC：权限校验 / 内容同步" --> api
 
     api --> pg
@@ -48,6 +54,7 @@ flowchart LR
 ```
 
 - `apps/web` 通过 `y-websocket` 直连 `apps/collab-server` 做实时协同同步，通过 REST 调 `apps/api` 做除协同内容外的一切业务操作。
+- `apps/mobile` 是只读客户端：仅通过 REST 调 `apps/api`，不连接 `apps/collab-server`。
 - `apps/collab-server`（Rust）与 `apps/api`（Node）之间通过 **gRPC** 通信：连接建立时向 `apps/api` 校验角色权限，正文/标题变更按周期把最新内容同步落库。
 - `apps/api` 额外拆出一个 `worker` 进程（BullMQ + Redis）跑视频转码等 CPU 密集任务，跟 HTTP 处理进程分离。
 
@@ -59,6 +66,7 @@ flowchart LR
 | [`apps/api`](./apps/api) | Express · Prisma (PostgreSQL) · BullMQ (Redis) · MinIO · gRPC · Pino |
 | [`apps/collab-server`](./apps/collab-server) | Rust · Axum · [yrs](https://github.com/y-crdt/y-crdt) / y-sync · Tonic (gRPC) |
 | [`apps/desktop`](./apps/desktop) | Electron · React |
+| [`apps/mobile`](./apps/mobile) | Expo · React Native · Expo Router · Zustand · WebView（只读浏览） |
 | [`packages/tiptap-editor`](./packages/tiptap-editor) | [Tiptap](https://tiptap.dev/) 3 富文本编辑器封装（React），支持协同、Mermaid、视频等扩展 |
 | [`packages/error-monitor`](./packages/error-monitor) | 框架无关的前端错误监控 SDK（核心 + React/Vue 子路径） |
 
@@ -70,8 +78,14 @@ flowchart LR
 │   ├── web/            — React + Vite 前端
 │   ├── api/             — Express API 服务（含 worker 进程）
 │   ├── collab-server/   — Rust 实时协同服务
-│   └── desktop/         — Electron 桌面客户端
+│   ├── desktop/         — Electron 桌面客户端
+│   └── mobile/          — Expo · React Native 只读浏览客户端
 ├── packages/
+│   ├── app/             — 前端应用层（页面/路由/组件，web + desktop 复用）
+│   ├── core/            — 业务逻辑 + Zustand stores + Yjs 协同 hooks
+│   ├── api-client/      — 纯 HTTP 客户端（REST 服务封装）
+│   ├── ui/              — Radix UI 组件库
+│   ├── desktop-bridge/  — Electron 原生能力桥（类型契约）
 │   ├── tiptap-editor/   — 富文本编辑器封装
 │   └── error-monitor/   — 前端错误监控 SDK
 ├── protos/               — gRPC .proto 契约（apps/api ↔ apps/collab-server 共用）
@@ -119,6 +133,17 @@ make dev-collab     # 另开一个终端：cargo run 启动 Rust 协同服务
 | ws://localhost:4000/ws | `apps/collab-server`（Yjs WebSocket） |
 | http://localhost:9001 | MinIO 管理控制台 |
 
+### 启动移动端（apps/mobile）
+
+移动端是只读浏览客户端（Expo · React Native），需先保证 `apps/api` 已启动：
+
+```bash
+pnpm --filter @app/mobile run ios        # iOS 模拟器
+pnpm --filter @app/mobile run android    # Android 模拟器
+```
+
+宿主机地址会按平台自动选择（见 `apps/mobile/src/lib/config.ts`）：iOS 模拟器用 `localhost:3000`、Android 模拟器用 `10.0.2.2:3000`，因此**模拟器场景无需 `.env`**。真机调试时，在 `apps/mobile/.env` 里写 `EXPO_PUBLIC_API_URL=http://<电脑局域网IP>:3000`（手机与电脑需同一网络，且 macOS 防火墙需放行 node 的入站连接）。
+
 ### 用 Docker 跑完整栈
 
 ```bash
@@ -137,6 +162,13 @@ pnpm dev             # 并行开发模式
 pnpm typecheck       # TypeScript 全量类型检查
 pnpm lint            # biome + stylelint 检查
 pnpm lint:fix        # 自动修复
+
+# 移动端
+pnpm --filter @app/mobile run ios        # iOS 模拟器
+pnpm --filter @app/mobile run android    # Android 模拟器
+
+# API 断点调试（--inspect=9229，配合 .vscode/launch.json 的 Attach 配置）
+pnpm --filter @app/api run dev:api:debug
 ```
 
 Rust 侧（`apps/collab-server`）：
