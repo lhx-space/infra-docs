@@ -29,5 +29,8 @@
     "**/logs": true,
     "**/node_modules": true
   },
-  "cSpell.words": ["texttosql"]
+  "cSpell.words": ["texttosql"],
+  "mdk.platform": "iOS",
+  "mdk.defaultEditor": "MDK Editor",
+  "workbench.editorAssociations": {}
 }
