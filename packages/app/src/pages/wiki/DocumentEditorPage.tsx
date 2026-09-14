@@ -1,3 +1,4 @@
+import {AIChatPanel} from '@luhanxin/ai-chat';
 import {
   ApiError,
   createPdfExport,
@@ -15,7 +16,7 @@ import {
   useProfileStore,
   useWikiStore
 } from '@luhanxin/core';
-import type {HistoricalEditorInfo} from '@luhanxin/tiptap-editor';
+import type {EditorBridge, HistoricalEditorInfo} from '@luhanxin/tiptap-editor';
 import {DocumentEditor} from '@luhanxin/tiptap-editor';
 import {
   Button,
@@ -26,8 +27,17 @@ import {
   DropdownMenuTrigger,
   EmptyState
 } from '@luhanxin/ui';
-import {Download, FileDown, FileText, FileType2, History, Loader2, Trash2} from 'lucide-react';
-import {useEffect, useRef, useState} from 'react';
+import {
+  Download,
+  FileDown,
+  FileText,
+  FileType2,
+  History,
+  Loader2,
+  Sparkles,
+  Trash2
+} from 'lucide-react';
+import {type MouseEvent as ReactMouseEvent, useEffect, useRef, useState} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
 import {toast} from 'sonner';
 import {PageHeader} from '@/components/shell/PageHeaderContext';
@@ -74,6 +84,33 @@ export default function DocumentEditorPage() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [historicalEditors, setHistoricalEditors] = useState<HistoricalEditorInfo[]>([]);
+  const [editorBridge, setEditorBridge] = useState<EditorBridge | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiWidth, setAiWidth] = useState(400);
+  const aiDragRef = useRef<{startX: number; startWidth: number} | null>(null);
+
+  // AI 写作抽屉的宽度拖拽：右侧抽屉，把手在左边缘，向左拖增宽，钳制 320–720
+  function handleAiResizeStart(event: ReactMouseEvent): void {
+    event.preventDefault();
+    aiDragRef.current = {startX: event.clientX, startWidth: aiWidth};
+  }
+
+  useEffect(() => {
+    function handleMouseMove(event: MouseEvent): void {
+      if (!aiDragRef.current) return;
+      const delta = aiDragRef.current.startX - event.clientX;
+      setAiWidth(Math.min(720, Math.max(320, aiDragRef.current.startWidth + delta)));
+    }
+    function handleMouseUp(): void {
+      aiDragRef.current = null;
+    }
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
 
   // online/reloadKey 都不在下面的函数体里被读取，只是用来"触发效果重新执行"的信号量——
   // online 变化时重新拉一次覆盖"网络恢复后自动恢复可编辑状态并重新拉取最新数据"
@@ -289,6 +326,10 @@ export default function DocumentEditorPage() {
 
   const headerActions = (
     <div className="flex items-center gap-2">
+      <Button variant={aiOpen ? 'secondary' : 'ghost'} size="sm" onClick={() => setAiOpen(v => !v)}>
+        <Sparkles className="size-4" />
+        AI 写作
+      </Button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="sm">
@@ -361,7 +402,7 @@ export default function DocumentEditorPage() {
     <div className="flex h-full min-h-0 flex-col">
       {!fullscreen ? <PageHeader title={title || '未命名文档'} actions={headerActions} /> : null}
 
-      <div className="min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1">
         <DocumentEditor
           key={`${documentId}-${reloadKey}`}
           editable={canEdit}
@@ -388,8 +429,31 @@ export default function DocumentEditorPage() {
           historicalEditors={historicalEditors}
           fullscreen={fullscreen}
           onFullscreenChange={setFullscreen}
+          onEditorReady={bridge => {
+            // VIEWER 不暴露写回桥（8.3：无编辑权限时隐藏「插入/替换」）
+            if (canEdit) setEditorBridge(bridge);
+          }}
           className="h-full"
         />
+        {aiOpen ? (
+          <div
+            className="absolute inset-y-0 right-0 z-40 flex flex-col overflow-hidden border-l bg-card shadow-2xl"
+            style={{width: aiWidth}}
+          >
+            {/* biome-ignore lint/a11y/noStaticElementInteractions: 拖拽把手是 resize 手柄，非键盘可达元素 */}
+            <div
+              className="absolute inset-y-0 left-0 z-10 w-1 -translate-x-1/2 cursor-col-resize hover:bg-primary/40"
+              onMouseDown={handleAiResizeStart}
+            />
+            <AIChatPanel
+              mode="write"
+              editorBridge={editorBridge}
+              documentId={documentId}
+              documentTitle={title}
+              onClose={() => setAiOpen(false)}
+            />
+          </div>
+        ) : null}
       </div>
 
       {/* 全屏切换按钮已经是 `DocumentEditor` 自带工具栏的一部分（传了 `onFullscreenChange`

@@ -12,6 +12,8 @@ export const AUTH_MODE_BEARER = 'bearer';
 
 export interface ApiClientConfig {
   baseUrl: string;
+  /** ai-server 的基地址（独立 Rust 服务，与 baseUrl 不同端口）；缺省时退回 baseUrl */
+  aiBaseUrl?: string;
   getAccessToken: () => string | null;
   /** 会话刷新成功：第三个参数仅在 bearer 模式（移动端）下携带新的 refresh token */
   onSessionRefreshed: (user: AuthUser, accessToken: string, refreshToken?: string) => void;

@@ -9,7 +9,6 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "ignoreDeprecations": "6.0",
     "isolatedModules": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,

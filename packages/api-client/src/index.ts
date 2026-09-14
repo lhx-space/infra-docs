@@ -1,5 +1,6 @@
 export {type ApiClientConfig, configureApiClient, getApiClientConfig} from './config';
 export * from './network';
+export * from './services/ai';
 export * from './services/auth';
 export * from './services/document';
 export * from './services/document-export';

@@ -44,6 +44,11 @@ export const routes: AppRouteConfig[] = [
         meta: {title: 'Home'}
       },
       {
+        path: '/ask',
+        component: () => import('@/pages/AskPage'),
+        meta: {title: 'AI 问答'}
+      },
+      {
         path: '/wiki',
         component: () => import('@/pages/wiki/WikiList'),
         meta: {title: 'Wiki'}

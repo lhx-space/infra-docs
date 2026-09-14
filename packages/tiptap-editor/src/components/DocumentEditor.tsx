@@ -60,6 +60,17 @@ export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
  * （见 document-editor-performance spec.md「超大文档拆分引导」）。 */
 const SPLIT_SUGGESTION_BLOCK_THRESHOLD = 300;
 
+/**
+ * AI 编辑器桥（见 ai-assistant design.md 决策 6）：`DocumentEditor` 把「读上下文 + 应用
+ * 内容」的最小能力暴露给 AI 聊天面板，聊天面板据此组装写作请求、把生成结果写回 `Y.Doc`。
+ */
+export interface EditorBridge {
+  /** 读当前上下文：选中文本（无选中为 null）+ 光标附近切片（供写作 agent 参考） */
+  getContext(): {selectedText: string | null; contextSlice: string | null};
+  /** 在光标处插入内容（当前有选中时替换选中，Tiptap `insertContent` 的既有语义） */
+  apply(content: string): void;
+}
+
 export interface DocumentEditorProps {
   /**
    * 初始内容（ProseMirror JSON）。只在组件首次挂载时读取一次，切换到另一篇文档时，
@@ -145,6 +156,9 @@ export interface DocumentEditorProps {
    * 的作者去重，理论上应该已经去重），本组件会再按 `id` 兜底去重一次，不传则不渲染。
    */
   historicalEditors?: HistoricalEditorInfo[];
+  /** AI 编辑器桥（见 ai-assistant design.md 决策 6）：editor 实例创建后回调，
+   * 把「读上下文 + 应用内容」的最小桥暴露给 AI 聊天面板；不传则不暴露 */
+  onEditorReady?: (bridge: EditorBridge) => void;
 }
 
 function cx(...classNames: Array<string | false | undefined | null>): string {
@@ -187,7 +201,8 @@ export function DocumentEditor({
   collaboration,
   collaborationStatus = 'connecting',
   onReconnect,
-  historicalEditors = []
+  historicalEditors = [],
+  onEditorReady
 }: DocumentEditorProps) {
   const isEditable = editable && !offline;
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
@@ -301,6 +316,27 @@ export function DocumentEditor({
   useEffect(() => {
     editor.setEditable(isEditable);
   }, [editor, isEditable]);
+
+  // AI 编辑器桥：editor 实例就绪后，把最小桥暴露给 AI 聊天面板（见 ai-assistant
+  // design.md 决策 6）。用 ref 存最新回调，避免外层每次渲染都重建 bridge。
+  const onEditorReadyRef = useRef(onEditorReady);
+  onEditorReadyRef.current = onEditorReady;
+  useEffect(() => {
+    if (!editor) return;
+    onEditorReadyRef.current?.({
+      getContext: () => {
+        const {from, to, empty} = editor.state.selection;
+        const selectedText = empty ? null : editor.state.doc.textBetween(from, to, '\n');
+        const fullText = editor.getText();
+        const contextSlice =
+          fullText.slice(Math.max(0, from - 300), Math.min(fullText.length, to + 300)) || null;
+        return {selectedText, contextSlice};
+      },
+      apply: (content: string) => {
+        editor.chain().focus().insertContent(content).run();
+      }
+    });
+  }, [editor]);
 
   // 标题的极简编辑器实例（见 collaborative-document-title design.md 决策 2）：只装配
   // `Document`/`Paragraph`/`Text` 三个节点（`StarterKit` 里其余全部子扩展显式关闭），

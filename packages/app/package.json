@@ -16,6 +16,7 @@
     "react-dom": ">=18"
   },
   "dependencies": {
+    "@luhanxin/ai-chat": "workspace:*",
     "@luhanxin/api-client": "workspace:*",
     "@luhanxin/core": "workspace:*",
     "@luhanxin/desktop-bridge": "workspace:*",
@@ -29,6 +30,6 @@
   "devDependencies": {
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.3"
   }
 }

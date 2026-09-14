@@ -1,5 +1,5 @@
 {
-  "name": "@luhanxin/desktop-bridge",
+  "name": "@luhanxin/ai-chat",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -26,7 +26,21 @@
   "engines": {
     "node": ">=18.18.0"
   },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "dependencies": {
+    "@luhanxin/api-client": "workspace:*",
+    "@luhanxin/ui": "workspace:*",
+    "lucide-react": "^1.31.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
   "devDependencies": {
+    "@luhanxin/tiptap-editor": "workspace:*",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "tsup": "^8.3.5",
     "typescript": "^6.0.3"
   }

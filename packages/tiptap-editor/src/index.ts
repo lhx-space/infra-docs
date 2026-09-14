@@ -7,6 +7,7 @@
 export {
   DocumentEditor,
   type DocumentEditorProps,
+  type EditorBridge,
   type SaveStatus
 } from './components/DocumentEditor';
 export {DocumentOutline} from './components/DocumentOutline';

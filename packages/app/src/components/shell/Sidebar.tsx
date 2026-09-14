@@ -6,7 +6,16 @@ import {
   useWikiStore
 } from '@luhanxin/core';
 import {Button, cn} from '@luhanxin/ui';
-import {BookOpen, ChevronsLeft, Home as HomeIcon, Pin, Plus, Search, Users} from 'lucide-react';
+import {
+  BookOpen,
+  ChevronsLeft,
+  Home as HomeIcon,
+  Pin,
+  Plus,
+  Search,
+  Sparkles,
+  Users
+} from 'lucide-react';
 import {useEffect, useState} from 'react';
 import {Link, useLocation} from 'react-router-dom';
 import {SearchDialog} from '@/components/search/SearchDialog';
@@ -103,6 +112,17 @@ export function Sidebar() {
           >
             <HomeIcon className="size-4" />
             Home
+          </Link>
+
+          <Link
+            to="/ask"
+            className={cn(
+              'flex items-center gap-2 rounded-md border-l-2 border-transparent px-3 py-2 text-sm hover:bg-sidebar-accent',
+              location.pathname === '/ask' && 'border-sidebar-primary bg-sidebar-accent font-medium'
+            )}
+          >
+            <Sparkles className="size-4" />
+            AI 问答
           </Link>
 
           <Link

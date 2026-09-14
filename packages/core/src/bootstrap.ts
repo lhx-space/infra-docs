@@ -12,6 +12,7 @@ export function bootstrapCore(config: CoreConfig): void {
   configureCore(config);
   configureApiClient({
     baseUrl: config.apiBaseUrl,
+    aiBaseUrl: config.aiBaseUrl,
     getAccessToken: () => useAuthStore.getState().accessToken,
     onSessionRefreshed: (user, accessToken) =>
       useAuthStore.getState().setSession(user, accessToken),

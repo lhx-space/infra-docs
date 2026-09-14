@@ -8,6 +8,7 @@ import {bootstrap} from '@luhanxin/app';
 bootstrap({
   apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000',
   collabWsUrl: import.meta.env.VITE_COLLAB_WS_URL ?? 'ws://localhost:4000/ws',
+  aiBaseUrl: import.meta.env.VITE_AI_BASE_URL ?? 'http://localhost:4100',
   dev: import.meta.env.DEV,
   // 打包后 renderer 走自定义协议 luhanxin-docs-app://（见 main/index.ts 的 loadURL），
   // 是 standard scheme，BrowserRouter 可以正常匹配路径，用默认的 browser 路由即可。
