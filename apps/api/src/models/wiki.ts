@@ -156,3 +156,24 @@ export function searchWikisByIds(wikiIds: string[], keyword: string): Promise<Wi
     orderBy: {updatedAt: 'desc'}
   });
 }
+
+/**
+ * AI 服务 gRPC 用（`AiDataService.ListAccessibleWikis`）：返回当前用户可读的全部 wikiId
+ * ——WikiMember 关系 ∪ 其作为 Team OWNER 的 wiki 兜底，与 `services/wiki-access.ts` 的
+ * `checkWikiAccess` 口径一致（含 Team OWNER 运行时兜底），比 `listWikisByUserId`
+ * （仅 WikiMember）更完整。见 openspec/changes/ai-assistant design.md 决策 9。
+ */
+export async function listAccessibleWikiIds(userId: string): Promise<string[]> {
+  const [memberWikis, ownedTeams] = await Promise.all([
+    prisma.wiki.findMany({where: {members: {some: {userId}}}, select: {id: true}}),
+    prisma.teamMember.findMany({where: {userId, role: 'OWNER'}, select: {teamId: true}})
+  ]);
+
+  const ownedTeamIds = ownedTeams.map(t => t.teamId);
+  const ownedWikis =
+    ownedTeamIds.length === 0
+      ? []
+      : await prisma.wiki.findMany({where: {teamId: {in: ownedTeamIds}}, select: {id: true}});
+
+  return [...new Set([...memberWikis.map(w => w.id), ...ownedWikis.map(w => w.id)])];
+}

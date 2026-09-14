@@ -1,0 +1,16 @@
+[package]
+name = "rig-editor-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "yjs-docs 写作 agent：文档上下文 + 指令 → 流式文案（见 openspec/changes/ai-assistant design.md 决策 6）"
+
+[dependencies]
+rig-common = { path = "../rig-common" }
+rig-rag-agent = { path = "../rig-rag-agent" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+futures-util = { workspace = true }

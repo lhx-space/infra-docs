@@ -1,6 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["apps/collab-server"]
+members = [
+    "apps/collab-server",
+    "apps/ai-server",
+    "crates/rig-common",
+    "crates/rig-rag-agent",
+    "crates/rig-editor-agent",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -69,3 +75,14 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 dotenvy = "0.15"
+
+# AI（Rig + pgvector，见 openspec/changes/ai-assistant design.md 决策 4/5/12）。
+# rig-core 0.42 已把全部 provider（openai/anthropic/deepseek/ollama）合并进 `providers`
+# 模块，不需要单独的 rig-openai/rig-anthropic/rig-ollama companion crate（决策 5）。
+# 默认 feature（reqwest + rustls + derive）已覆盖 provider 与 embedding 所需能力。
+# `audio` feature 启用 TTS（audio_generation）能力（见 ai-assistant design.md 决策 15）。
+rig-core = { version = "0.42", features = ["audio"] }
+# pgvector 的 sqlx feature 与 workspace 里 sqlx 0.8 对齐，用于向量表读写（决策 12）。
+pgvector = { version = "0.4", features = ["sqlx"] }
+# 会话历史存储（见 ai-assistant design.md 决策 13：Redis + TTL）
+redis = { version = "1.7", features = ["tokio-comp", "connection-manager"] }

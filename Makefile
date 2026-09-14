@@ -1,6 +1,6 @@
 .PHONY: help install setup \
         up up-full down logs ps \
-        dev-collab check clippy fmt fmt-check test-rust build-rust \
+        dev-collab dev-ai check clippy fmt fmt-check test-rust build-rust \
         dev-web dev-api build-node lint lint-fix typecheck \
         dev-desktop build-desktop package-desktop \
         proto-gen \
@@ -23,6 +23,7 @@ install: ## 安装 Node 依赖 (pnpm install)
 setup: install ## 首次初始化：安装依赖 + 生成各服务 .env
 	@test -f apps/api/.env || cp apps/api/.env.example apps/api/.env
 	@test -f apps/collab-server/.env || cp apps/collab-server/.env.example apps/collab-server/.env
+	@test -f apps/ai-server/.env || cp apps/ai-server/.env.example apps/ai-server/.env
 	@echo "\n✓ 初始化完成"
 
 # ==== 基础设施 (Docker) ====
@@ -42,12 +43,15 @@ logs: ## 跟踪日志 (make logs s=postgres)
 ps: ## 查看服务状态
 	docker compose ps
 
-# ==== Rust (apps/collab-server) ====
-# 见 openspec/changes/yjs-realtime-collaboration/design.md 决策 1：独立 Rust 服务，
-# 跟 infra-sso 复用同一套工具链习惯（cargo check/clippy/fmt）。
+# ==== Rust (apps/collab-server + apps/ai-server) ====
+# 见 openspec/changes/yjs-realtime-collaboration 与 ai-assistant 的 design.md：两个独立
+# Rust 服务，跟 infra-sso 复用同一套工具链习惯（cargo check/clippy/fmt）。
 
 dev-collab: ## 启动协同服务开发模式 (cargo run)
 	cargo run -p $(RUST_PKG)
+
+dev-ai: ## 启动 AI 服务开发模式 (cargo run，见 ai-assistant design.md)
+	cargo run -p ai-server
 
 check: ## cargo check（全部 workspace 成员）
 	cargo check

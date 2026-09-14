@@ -1,0 +1,20 @@
+[package]
+name = "rig-common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "yjs-docs AI 服务公共层：模型路由、SSE 流式工具、gRPC client 装配（见 openspec/changes/ai-assistant design.md 决策 4）"
+
+[dependencies]
+rig-core = { workspace = true }
+tokio = { workspace = true }
+tonic = { workspace = true }
+prost = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+futures-util = { workspace = true }
+
+[build-dependencies]
+tonic-build = "0.12"

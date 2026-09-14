@@ -38,7 +38,7 @@ jobs:
         # 是否齐全（对应 tasks.md 6.4 的实现阶段修正）。
         run: pnpm --filter=@app/api verify:grpc-proto
 
-  # ===== Rust 检查 (apps/collab-server，见 openspec/changes/yjs-realtime-collaboration) =====
+  # ===== Rust 检查 (apps/collab-server + apps/ai-server，全 workspace) =====
   rust:
     name: Rust (fmt + clippy + test)
     runs-on: ubuntu-latest
@@ -79,6 +79,12 @@ jobs:
         with:
           context: .
           file: apps/collab-server/Dockerfile
+          push: false
+      - name: Build ai-server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/ai-server/Dockerfile
           push: false
       - name: Build web image
         uses: docker/build-push-action@v6

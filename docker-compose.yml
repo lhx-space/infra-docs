@@ -97,9 +97,57 @@ services:
     restart: unless-stopped
     profiles: ["full"]
 
+  # AI 服务（见 openspec/changes/ai-assistant design.md 决策 1/5/13）：Rust（Rig + Axum +
+  # tonic + sqlx + redis）实现，跟 collab-server 一样走独立 Dockerfile。SSE 端点对
+  # web/desktop 暴露（4100），通过 gRPC 调用 apps/api 拿权限/文档范围/变更枚举。
+  ai-server:
+    build:
+      context: .
+      dockerfile: apps/ai-server/Dockerfile
+    ports:
+      - '4100:4100'
+    env_file:
+      - ./apps/ai-server/.env
+    # 容器网络里把本机开发的 localhost 地址换成服务名（跟 collab-server 同一套原因）。
+    # AI_PROVIDER/API_KEY/MODEL 等继续从 .env 读；OLLAMA_BASE_URL 指向同网络的 ollama。
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-yjs-docs}
+      API_GRPC_ADDR: http://api:4011
+      REDIS_URL: redis://redis:6379
+      OLLAMA_BASE_URL: http://ollama:11434
+    depends_on:
+      - postgres
+      - redis
+      - api
+    restart: unless-stopped
+    profiles: ["full"]
+
+  # 本地模型基础设施层（见 design.md 决策 14）：与 postgres/redis/minio 同级。macOS 的
+  # Docker 无 GPU（Metal 不可用），容器内 Ollama 只能 CPU 推理；本地开发更建议宿主机
+  # 原生 Ollama（brew install ollama）用 Metal 加速，ai-server 用
+  # OLLAMA_BASE_URL=http://host.docker.internal:11434 连宿主机。模型不随镜像打包，首次
+  # 使用需 `docker compose exec ollama ollama pull <model>`。
+  ollama:
+    container_name: yjs-docs-ollama
+    image: ollama/ollama
+    ports:
+      - '11434:11434'
+    volumes:
+      - ./.data/ollama:/root/.ollama
+      # 自动拉取模型脚本（见 ollama-entrypoint.sh）：容器启动时先 serve 再 pull OLLAMA_MODELS
+      - ./apps/ai-server/db/ollama-entrypoint.sh:/entrypoint.sh:ro
+    environment:
+      # 要自动拉取的模型列表（空格分隔）：对话模型 + embedding 模型
+      # 用 3b 而非 7b：macOS Docker 默认内存约 3.8GB，7b 需 4.3GB 会 OOM（见 ai-assistant design.md）
+      OLLAMA_MODELS: ${OLLAMA_MODELS:-qwen2.5:3b nomic-embed-text}
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    restart: unless-stopped
+
   postgres:
     container_name: yjs-docs-postgres
-    image: postgres:16-alpine
+    # pgvector 镜像（自带 vector 扩展文件）：RAG 向量检索用（见 openspec/changes/ai-assistant
+    # design.md 决策 12）。换成官方 `postgres:16-alpine` 需自行安装 pgvector 扩展。
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
@@ -108,6 +156,11 @@ services:
       - '5432:5432'
     volumes:
       - ./.data/postgres:/var/lib/postgresql/data
+      # 首次初始化数据卷时执行：CREATE EXTENSION vector + 建 RAG 向量表。
+      # 注意：对已存在的数据卷（./.data/postgres 已有数据）不会重新执行，需手动
+      # `docker compose exec postgres psql -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-yjs-docs} \
+      #   -c "CREATE EXTENSION IF NOT EXISTS vector;"` 并按 001_pgvector.sql 建表。
+      - ./apps/ai-server/db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-user}']
       interval: 5s

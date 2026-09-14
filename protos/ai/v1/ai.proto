@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package yjsdocs.ai.v1;
+
+// `ai-server`（Rust，apps/ai-server）与 `apps/api`（TS）之间的内部 gRPC 契约。
+//
+// 背景（见 openspec/changes/ai-assistant/design.md 决策 1/9/11）：
+// AI 服务需要从 `apps/api` 取两类业务数据——
+// 1. 当前用户可访问的 Wiki 范围（RAG 检索时按权限过滤，见决策 9）；
+// 2. 自某个时间点以来内容有变的文档枚举 + 全量现存文档 ID 列表（RAG 增量重索引与
+//    删除对账的 pull 模型数据源，见决策 11）。
+// 这两类都是业务规则（权限判断、检索范围），只在 apps/api（TS）保留一份实现，
+// ai-server 不重新实现，只通过下面这个 gRPC 服务调用。
+//
+// 写作权限（用户对某文档的角色判断）复用 `protos/collab/v1/collab.proto` 已有的
+// `AccessControlService.CheckDocumentRole`，本文件不重复定义——ai-server 同时编译
+// 两个 proto，用同一套角色判断（含 Team OWNER 兜底权限，见
+// apps/api/src/services/wiki-access.ts 的 checkWikiAccess）。
+//
+// 调用频率：`ListDocumentsChangedSince`/`ListDocumentIds` 是后台索引任务的低频调用
+// （周期或每日对账）；`ListAccessibleWikis` 每次问答请求一次。都不是逐字符的高频路径，
+// 一次 gRPC 往返的延迟可以接受。
+
+// ---- RAG 数据源 / 检索范围 ----
+service AiDataService {
+  // 返回当前用户可访问（可读）的全部 wikiId，供 RAG 检索时限定向量检索范围。
+  //
+  // 语义上等价于「该用户能读到文档的全部 Wiki」，与 `services/wiki-access.ts` 的
+  // `checkWikiAccess` 口径一致——含 Team OWNER 运行时兜底权限，比 REST 搜索接口用的
+  // `listWikisByUserId`（仅 WikiMember）更完整（Team OWNER 对未显式加入的 Wiki 也
+  // 可读，见 team-workspace-model spec.md「基于团队所有者的运行时权限兜底」）。
+  rpc ListAccessibleWikis(ListAccessibleWikisRequest) returns (ListAccessibleWikisResponse);
+
+  // 枚举自给定 watermark 以来内容有变（`searchText` 更新）的文档，供 ai-server 后台
+  // 任务增量重索引；用分页游标续拉，避免一次返回全量。
+  rpc ListDocumentsChangedSince(ListDocumentsChangedSinceRequest) returns (ListDocumentsChangedSinceResponse);
+
+  // 分页返回全部现存文档 ID，供 ai-server 周期性对账：对比自己向量表里的文档 ID，
+  // 删除「已不在现存集合中」的文档向量（Prisma 侧文档是硬删除、无 tombstone，删除
+  // 同步只能靠这种低频全量对账实现，见 design.md 决策 11 的补充说明）。
+  rpc ListDocumentIds(ListDocumentIdsRequest) returns (ListDocumentIdsResponse);
+}
+
+message ListAccessibleWikisRequest {
+  // 已通过 JWT 签名校验（ai-server 本地校验，见 design.md 决策 3）后取出的用户 ID。
+  string user_id = 1;
+}
+
+message ListAccessibleWikisResponse {
+  // 该用户可读的全部 wikiId（WikiMember 关系 ∪ 其作为 Team OWNER 的 wiki 兜底）。
+  repeated string wiki_ids = 1;
+}
+
+message ListDocumentsChangedSinceRequest {
+  // 增量游标：上次索引到的 `updatedAt`（RFC3339 字符串，如 `2026-09-14T12:00:00Z`）。
+  // 首次全量索引传空字符串，由服务端视为「从最早开始」。
+  // 用字符串而非 google.protobuf.Timestamp，跟本仓库 collab.proto「只用基础类型 +
+  // 自定义 message/enum」的既有风格保持一致（见 proto-loader.ts 的取舍说明）。
+  string watermark = 1;
+  // 每页最多返回条数；服务端有上限兜底（如 100），传 0 或负数时用服务端默认值。
+  int32 page_size = 2;
+  // 分页游标（opaque，服务端编码「下一批起点」）；首页传空字符串。
+  string page_token = 3;
+}
+
+message ListDocumentsChangedSinceResponse {
+  // 按 updated_at 升序返回的自 watermark 以来内容有变的文档（含新增与更新）。
+  repeated DocumentRecord documents = 1;
+  // 下一页游标；空字符串表示已到末尾。
+  string next_page_token = 2;
+}
+
+// 一篇文档的可索引字段快照。
+message DocumentRecord {
+  string document_id = 1;
+  // 所属 wikiId：检索时据此按「用户可访问 wikiId 集合」过滤（见 ListAccessibleWikis）。
+  string wiki_id = 2;
+  // 文档标题，与 search_text 一起作为 embedding 输入与检索上下文。
+  string title = 3;
+  // 服务端保存时派生的纯文本（`Document.searchText`），RAG 索引的数据源
+  // （不在 Rust 侧解析 ProseMirror JSON / Yjs 二进制，见 design.md 决策 10）。
+  string search_text = 4;
+  // 该文档内容最近一次更新的时间（RFC3339）；ai-server 用本批最大值推进 watermark。
+  string updated_at = 5;
+}
+
+message ListDocumentIdsRequest {
+  // 每页最多返回条数；服务端有上限兜底（如 1000）。
+  int32 page_size = 1;
+  // 分页游标（opaque）；首页传空字符串。
+  string page_token = 2;
+}
+
+message ListDocumentIdsResponse {
+  repeated string document_ids = 1;
+  // 下一页游标；空字符串表示已到末尾。
+  string next_page_token = 2;
+}

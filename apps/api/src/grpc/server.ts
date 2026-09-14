@@ -2,6 +2,8 @@ import * as grpc from '@grpc/grpc-js';
 import {env} from '../env';
 import {logger} from '../logger';
 import {checkDocumentRole} from './access-control-service';
+import {listAccessibleWikis, listDocumentIds, listDocumentsChangedSince} from './ai-data-service';
+import {aiProto} from './ai-proto-loader';
 import {getDocumentContent, syncDocumentContent} from './document-sync-service';
 import {collabProto} from './proto-loader';
 
@@ -21,6 +23,12 @@ export function createGrpcServer(): grpc.Server {
   server.addService(collabProto.DocumentSyncService.service, {
     GetDocumentContent: getDocumentContent,
     SyncDocumentContent: syncDocumentContent
+  });
+
+  server.addService(aiProto.AiDataService.service, {
+    ListAccessibleWikis: listAccessibleWikis,
+    ListDocumentsChangedSince: listDocumentsChangedSince,
+    ListDocumentIds: listDocumentIds
   });
 
   return server;

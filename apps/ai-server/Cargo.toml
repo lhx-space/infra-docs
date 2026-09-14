@@ -1,0 +1,31 @@
+[package]
+name = "ai-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "yjs-docs AI 服务：SSE 流式端点 + RAG 索引/检索（见 openspec/changes/ai-assistant）"
+
+[[bin]]
+name = "ai-server"
+path = "src/main.rs"
+
+[dependencies]
+rig-common = { path = "../../crates/rig-common" }
+rig-rag-agent = { path = "../../crates/rig-rag-agent" }
+rig-editor-agent = { path = "../../crates/rig-editor-agent" }
+tokio = { workspace = true }
+axum = { workspace = true, features = ["json"] }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tonic = { workspace = true }
+sqlx = { workspace = true }
+redis = { workspace = true }
+jsonwebtoken = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+dotenvy = { workspace = true }
+futures-util = { workspace = true }
